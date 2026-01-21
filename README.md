@@ -23,7 +23,7 @@ Before running the application, ensure you have the following installed:
 
 1.  **Node.js** (v18 or higher recommended)
 2.  **Rust & Cargo** (Required for building the Tauri frontend)
-3.  **Python 3.8+**
+3.  **Python 3.12**
 4.  **FFmpeg** (Recommended for broad audio format support)
 
 ## Installation

@@ -82,11 +82,18 @@ async def lifespan(app: FastAPI):
     os.makedirs(TEMP_DIR, exist_ok=True)
     logger.info(f"Created temp directory: {TEMP_DIR}")
     
-    # Load previously selected model if available
+    # Load previously selected model if available and downloaded
     prefs = load_preferences()
     saved_model = prefs.get("selected_model")
     if saved_model and asr_model_manager:
-        logger.info(f"Startup: Loading saved model '{saved_model}'...")
+        # Only load if the model is actually downloaded
+        if not asr_model_manager.is_model_downloaded(saved_model):
+            logger.warning(f"Startup: Saved model '{saved_model}' is not downloaded, skipping load.")
+            saved_model = None
+        else:
+            logger.info(f"Startup: Loading saved model '{saved_model}'...")
+    
+    if saved_model and asr_model_manager:
         try:
              # Run in executor to avoid blocking startup (though startup is async, so await is fine if we want to block)
              # But let's use executor to be safe and consistent with other async ops
