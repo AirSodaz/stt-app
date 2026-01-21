@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+
+# Project specific
+temp_uploads/
+models/
+tests/
+
+# User preferences
+user_preferences.json
+
+# Logs
+logs/
+
+# OS specific
+.DS_Store
+Thumbs.db
