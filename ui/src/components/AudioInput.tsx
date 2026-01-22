@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Square, Upload, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -25,6 +26,7 @@ export function AudioInput({
     onStopStreaming,
     showUpload = true
 }: AudioInputProps) {
+    const { t } = useTranslation();
     const [isRecording, setIsRecording] = useState(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
@@ -149,11 +151,12 @@ export function AudioInput({
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.9 }}
-                        className="absolute inset-0 z-50 flex items-center justify-center rounded-3xl bg-black/60 backdrop-blur-sm"
+                        className="absolute inset-0 z-50 flex items-center justify-center rounded-3xl backdrop-blur-sm"
+                        style={{ backgroundColor: 'var(--glass-bg)' }}
                     >
                         <div className="flex flex-col items-center gap-4 text-cyan-400">
                             <Upload className="w-16 h-16 animate-bounce" />
-                            <p className="text-2xl font-bold">Drop audio files here</p>
+                            <p className="text-2xl font-bold">{t('audioInput.drop')}</p>
                         </div>
                     </motion.div>
                 )}
@@ -216,28 +219,29 @@ export function AudioInput({
                 <AnimatePresence mode="wait">
                     <motion.p
                         key={isActive ? "recording" : isProcessing ? "processing" : "idle"}
-                        className="text-xl font-medium text-white/90"
+                        className="text-xl font-medium text-primary"
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
                         transition={{ duration: 0.2 }}
                     >
                         {isActive ? (
-                            <span className="text-red-400">Recording...</span>
+                            <span className="text-red-500 dark:text-red-400">{t('audioInput.recording')}</span>
                         ) : isProcessing ? (
-                            <span className="text-cyan-400">Processing...</span>
+                            <span className="text-cyan-600 dark:text-cyan-400">{t('audioInput.processing')}</span>
                         ) : (
-                            "Tap to Speak"
+                            t('audioInput.tapToSpeak')
                         )}
                     </motion.p>
+
                 </AnimatePresence>
                 <motion.p
-                    className="text-sm text-white/40"
+                    className="text-sm text-secondary"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.2 }}
                 >
-                    {isActive ? "Tap again to stop" : "Or drag & drop audio files here"}
+                    {isActive ? t('audioInput.tapToStop') : t('audioInput.dragDropHint')}
                 </motion.p>
             </div>
 
@@ -254,7 +258,7 @@ export function AudioInput({
                         whileTap={{ scale: 0.98 }}
                     >
                         <Upload className="w-4 h-4" />
-                        <span>Upload Audio</span>
+                        <span>{t('audioInput.upload')}</span>
                         <input
                             type="file"
                             accept="audio/*"
@@ -265,6 +269,6 @@ export function AudioInput({
                     </motion.label>
                 )}
             </AnimatePresence>
-        </div>
+        </div >
     );
 }

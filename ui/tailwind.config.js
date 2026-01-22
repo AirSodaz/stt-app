@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -12,6 +13,8 @@ export default {
       colors: {
         glass: "rgba(255, 255, 255, 0.1)",
         glassBorder: "rgba(255, 255, 255, 0.2)",
+        primary: "var(--color-text-primary)",
+        secondary: "var(--color-text-secondary)",
       }
     },
   },

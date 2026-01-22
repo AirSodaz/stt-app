@@ -12,9 +12,38 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 
-    /* Color Palette */
+    /* Light Theme Palette (Default) */
+    --color-bg-primary: #f8fafc;
+    --color-bg-secondary: #f1f5f9;
+    --color-text-primary: #0f172a;
+    --color-text-secondary: #334155;
+
+    --color-accent-cyan: #0891b2;
+    /* Darker cyan for light mode */
+    --color-accent-blue: #2563eb;
+    --color-accent-purple: #7c3aed;
+    --color-accent-pink: #db2777;
+
+    /* Light Mode Glass Effects */
+    --glass-bg: rgba(255, 255, 255, 0.3);
+    --glass-bg-hover: rgba(255, 255, 255, 0.4);
+    --glass-border: rgba(0, 0, 0, 0.15);
+    --glass-border-light: rgba(0, 0, 0, 0.05);
+    --glass-glow: rgba(8, 145, 178, 0.1);
+
+    /* Shadows */
+    --shadow-glow-cyan: 0 0 60px rgba(8, 145, 178, 0.2);
+    --shadow-glow-purple: 0 0 60px rgba(124, 58, 237, 0.2);
+    --shadow-card: 0 10px 30px -5px rgba(0, 0, 0, 0.1);
+}
+
+.dark {
+    /* Dark Theme Palette */
     --color-bg-primary: #0a0a1a;
     --color-bg-secondary: #111128;
+    --color-text-primary: rgba(255, 255, 255, 0.95);
+    --color-text-secondary: rgba(255, 255, 255, 0.8);
+
     --color-accent-cyan: #06b6d4;
     --color-accent-blue: #3b82f6;
     --color-accent-purple: #8b5cf6;
@@ -38,7 +67,8 @@ body {
     min-width: 320px;
     min-height: 100vh;
     background: var(--color-bg-primary);
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--color-text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ===== ANIMATED BACKGROUND ===== */
@@ -119,6 +149,7 @@ body {
     box-shadow: var(--shadow-card);
     position: relative;
     overflow: hidden;
+    transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .glass-card::before {
@@ -128,17 +159,18 @@ body {
     border-radius: inherit;
     padding: 1px;
     background: linear-gradient(135deg,
-            rgba(255, 255, 255, 0.1) 0%,
+            var(--glass-border-light) 0%,
             transparent 50%,
             transparent 100%);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     pointer-events: none;
 }
 
 .glass-card-light {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--glass-bg);
     border-color: var(--glass-border-light);
 }
 
@@ -208,6 +240,7 @@ body {
     opacity: 0.03;
     pointer-events: none;
     z-index: 1000;
+    mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
 }
 
@@ -215,34 +248,34 @@ body {
 
 .glass-select {
     appearance: none;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--glass-bg);
     backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
     padding: 8px 36px 8px 14px;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--color-text-primary);
     font-size: 14px;
     cursor: pointer;
     transition: all 0.2s ease;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 12px center;
 }
 
 .glass-select:hover {
     border-color: var(--glass-border-light);
-    background-color: rgba(0, 0, 0, 0.4);
+    background-color: var(--glass-bg-hover);
 }
 
 .glass-select:focus {
     outline: none;
     border-color: var(--color-accent-cyan);
-    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+    box-shadow: 0 0 0 3px var(--glass-glow);
 }
 
 .glass-select option {
-    background: #1a1a2e;
-    color: white;
+    background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
 }
 
 /* ===== TOGGLE BUTTON ===== */
@@ -252,25 +285,25 @@ body {
     align-items: center;
     gap: 8px;
     padding: 8px 14px;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--glass-bg);
     backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--color-text-secondary);
     font-size: 14px;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .glass-toggle:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--glass-bg-hover);
     border-color: var(--glass-border-light);
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--color-text-primary);
 }
 
 .glass-toggle.active {
-    background: rgba(6, 182, 212, 0.15);
-    border-color: rgba(6, 182, 212, 0.4);
+    background: var(--glass-glow);
+    border-color: var(--color-accent-cyan);
     color: var(--color-accent-cyan);
 }
 
@@ -284,7 +317,7 @@ body {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 14px;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--color-text-secondary);
     font-size: 14px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -293,14 +326,14 @@ body {
 .glass-upload:hover {
     background: var(--glass-bg-hover);
     border-color: var(--glass-border-light);
-    color: white;
+    color: var(--color-text-primary);
     transform: translateY(-1px);
 }
 
 /* ===== RESULT CARD ===== */
 
 .result-card {
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--glass-bg);
     backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
     border-radius: 20px;
@@ -312,14 +345,14 @@ body {
     background: transparent;
     border: none;
     border-radius: 8px;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .copy-button:hover {
     background: rgba(255, 255, 255, 0.1);
-    color: white;
+    color: var(--color-text-primary);
 }
 
 /* ===== LOADING SKELETON ===== */

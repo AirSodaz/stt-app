@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { AudioInput } from './components/AudioInput';
@@ -12,11 +13,12 @@ import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 
 function App() {
+    const { t } = useTranslation();
     const [transcription, setTranscription] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [copied, setCopied] = useState(false);
     const [language, setLanguage] = useState("auto");
-    const [useItn, setUseItn] = useState(false);
+    const [useItn, setUseItn] = useState(true);
     // Model is null until we load preference or user selects one
     const [model, setModel] = useState<string | null>(null);
     const [availableModels, setAvailableModels] = useState<{ name: string, downloaded: boolean, type?: string }[]>([]);
@@ -244,7 +246,7 @@ function App() {
     const handleDownloadModel = async (modelName: string) => {
         setIsDownloading(modelName);
         setDownloadProgress(0);
-        setDownloadMessage("Starting download...");
+        setDownloadMessage(t('settings.download') + "...");
 
         try {
             // Use SSE for progress tracking
@@ -294,7 +296,7 @@ function App() {
 
     const handleAudioReady = async (audioBlob: Blob) => {
         if (!model) {
-            setTranscription("Error: Please select a model first.");
+            setTranscription(t('app.error.selectModel'));
             return;
         }
 
@@ -354,7 +356,7 @@ function App() {
                                 if (text) {
                                     setTranscription(text);
                                 } else {
-                                    setTranscription("[No speech detected]");
+                                    setTranscription(t('app.error.speech'));
                                 }
                                 logger.debug("[SSE] Transcription complete");
                             } else if (data.status === "error") {
@@ -369,7 +371,7 @@ function App() {
             }
         } catch (error) {
             logger.error("Transcription error:", error);
-            setTranscription("Error: Could not transcribe audio. Ensure backend is running.");
+            setTranscription(t('app.error.transcribe'));
         } finally {
             setIsProcessing(false);
             setProcessingTime(0);
@@ -438,7 +440,7 @@ function App() {
                             if (data.status === "processing") {
                                 processingTime = data.heartbeat;
                             } else if (data.status === "complete") {
-                                result = data.text || "[No speech detected]";
+                                result = data.text || t('app.error.speech');
                             } else if (data.status === "error") {
                                 throw new Error(data.message);
                             }
@@ -518,7 +520,7 @@ function App() {
                 const fullPath = await join(path, filename);
 
                 await writeTextFile(fullPath, allResults);
-                alert(`Successfully saved to ${fullPath}`);
+                alert(t('saveModal.success', { path: fullPath }));
             } else {
                 let savedCount = 0;
                 for (const item of completedItems) {
@@ -534,7 +536,7 @@ function App() {
                     await writeTextFile(fullPath, item.result || "");
                     savedCount++;
                 }
-                alert(`Successfully saved ${savedCount} files to ${path}`);
+                alert(t('saveModal.successCount', { count: savedCount, path }));
             }
         } catch (error) {
             logger.error("Failed to save files:", error);
@@ -590,16 +592,16 @@ function App() {
                         >
                             <Bot className="w-8 h-8 text-white" />
                         </motion.div>
-                        <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-linear-to-r from-white via-cyan-100 to-cyan-300">
-                            STT AI
+                        <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-linear-to-r from-cyan-600 via-cyan-500 to-cyan-400 dark:from-white dark:via-cyan-100 dark:to-cyan-300">
+                            {t('app.title')}
                         </h1>
                     </div>
 
                     {!showSettings && (
                         <button
                             onClick={() => setShowSettings(true)}
-                            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-white/80 hover:text-white"
-                            title="Settings"
+                            className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-slate-700 hover:text-slate-900 dark:text-white/80 dark:hover:text-white"
+                            title={t('app.settings')}
                         >
                             <Settings className="w-6 h-6" />
                         </button>
@@ -609,7 +611,7 @@ function App() {
                 {/* Tabs */}
                 {!showSettings && (
                     <div className="flex justify-center mb-8">
-                        <div className="bg-white/5 p-1 rounded-xl flex gap-1 border border-white/10">
+                        <div className="bg-black/5 dark:bg-white/5 p-1 rounded-xl flex gap-1 border border-black/5 dark:border-white/10">
                             <button
                                 onClick={() => {
                                     setActiveTab('offline');
@@ -620,12 +622,12 @@ function App() {
                                 className={cn(
                                     "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium",
                                     activeTab === 'offline'
-                                        ? "bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/10"
-                                        : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                                        ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 shadow-lg shadow-cyan-500/10"
+                                        : "text-slate-600 hover:text-slate-800 hover:bg-black/5 dark:text-white/70 dark:hover:text-white/90 dark:hover:bg-white/5"
                                 )}
                             >
                                 <FileAudio className="w-4 h-4" />
-                                Offline
+                                {t('app.offline')}
                             </button>
                             <button
                                 onClick={() => {
@@ -637,12 +639,12 @@ function App() {
                                 className={cn(
                                     "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium",
                                     activeTab === 'realtime'
-                                        ? "bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/10"
-                                        : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                                        ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 shadow-lg shadow-cyan-500/10"
+                                        : "text-slate-600 hover:text-slate-800 hover:bg-black/5 dark:text-white/70 dark:hover:text-white/90 dark:hover:bg-white/5"
                                 )}
                             >
                                 <Radio className="w-4 h-4" />
-                                Real-time
+                                {t('app.realtime')}
                             </button>
                         </div>
                     </div>
@@ -700,25 +702,25 @@ function App() {
                                 >
                                     {/* No model selected warning */}
                                     {!model && downloadedModels.length === 0 && (
-                                        <div className="text-amber-400/90 text-sm text-center px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                                            No models downloaded. Please go to Settings to download a model.
+                                        <div className="text-amber-600 dark:text-amber-400/90 text-sm text-center px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                                            {t('app.model.noneDownloaded')}
                                         </div>
                                     )}
                                     {!model && downloadedModels.length > 0 && (
-                                        <div className="text-cyan-400/90 text-sm text-center px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
-                                            Please select a model to start transcribing.
+                                        <div className="text-cyan-600 dark:text-cyan-400/90 text-sm text-center px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                                            {t('app.model.select')}
                                         </div>
                                     )}
                                     {/* Model loading indicator */}
                                     {model && modelLoadingStatus === 'loading' && (
-                                        <div className="text-cyan-400/90 text-sm text-center px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center gap-2">
-                                            <div className="w-4 h-4 border-2 border-cyan-400/40 border-t-cyan-400 rounded-full animate-spin" />
-                                            <span>Loading model...</span>
+                                        <div className="text-cyan-600 dark:text-cyan-400/90 text-sm text-center px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center gap-2">
+                                            <div className="w-4 h-4 border-2 border-cyan-600/40 dark:border-cyan-400/40 border-t-cyan-600 dark:border-t-cyan-400 rounded-full animate-spin" />
+                                            <span>{t('app.model.loading')}</span>
                                         </div>
                                     )}
                                     {model && modelLoadingStatus === 'ready' && (
-                                        <div className="text-emerald-400/90 text-xs text-center px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                                            ✓ Model ready
+                                        <div className="text-emerald-600 dark:text-emerald-400/90 text-xs text-center px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                            ✓ {t('app.model.ready')}
                                         </div>
                                     )}
 
@@ -735,6 +737,13 @@ function App() {
                                                 } else {
                                                     setLanguage("auto");
                                                 }
+                                                // Auto-enable ITN for models that support it, disable for streaming (online) models
+                                                const modelType = availableModels.find(m => m.name === newModel)?.type || 'offline';
+                                                if (modelType === 'online') {
+                                                    setUseItn(false);
+                                                } else {
+                                                    setUseItn(true);
+                                                }
                                             }}
                                             className="glass-select"
                                             title="Select Model"
@@ -745,10 +754,10 @@ function App() {
                                                 const type = m?.type || 'offline';
                                                 return activeTab === 'realtime' ? type === 'online' : type !== 'online';
                                             }).length === 0 ? (
-                                                <option value="">No {activeTab} models available</option>
+                                                <option value="">{t('app.model.noneAvailable', { mode: activeTab === 'offline' ? t('app.offline') : t('app.realtime') })}</option>
                                             ) : (
                                                 <>
-                                                    {!model && <option value="">Select a model...</option>}
+                                                    {!model && <option value="">{t('app.model.placeholder')}</option>}
                                                     {downloadedModels
                                                         .filter(name => {
                                                             const m = availableModels.find(am => am.name === name);
@@ -768,29 +777,28 @@ function App() {
                                             value={language}
                                             onChange={(e) => setLanguage(e.target.value)}
                                             className="glass-select"
-                                            disabled={!model || model === "Paraformer-Online" || model === "Paraformer"}
-                                            title={model === "Paraformer-Online" || model === "Paraformer" ? "Language locked to Chinese" : "Select Language"}
+                                            title={model === "Paraformer-Online" || model === "Paraformer" ? t('app.model.locked') : t('app.model.selectLanguage')}
                                         >
                                             {(!model || model === "SenseVoiceSmall") && (
                                                 <>
-                                                    <option value="auto">Auto Detect</option>
-                                                    <option value="zh">Chinese</option>
-                                                    <option value="en">English</option>
-                                                    <option value="ja">Japanese</option>
-                                                    <option value="ko">Korean</option>
-                                                    <option value="yue">Cantonese</option>
+                                                    <option value="auto">{t('app.language.auto')}</option>
+                                                    <option value="zh">{t('app.language.zh')}</option>
+                                                    <option value="en">{t('app.language.en')}</option>
+                                                    <option value="ja">{t('app.language.ja')}</option>
+                                                    <option value="ko">{t('app.language.ko')}</option>
+                                                    <option value="yue">{t('app.language.yue')}</option>
                                                 </>
                                             )}
                                             {(model === "Paraformer" || model === "Paraformer-Online") && (
-                                                <option value="zh">Chinese</option>
+                                                <option value="zh">{t('app.language.zh')}</option>
                                             )}
                                             {model === "Fun-ASR-Nano" && (
                                                 <>
-                                                    <option value="auto">Auto Detect</option>
-                                                    <option value="zh">Chinese</option>
-                                                    <option value="en">English</option>
-                                                    <option value="yue">Cantonese</option>
-                                                    <option value="ja">Japanese</option>
+                                                    <option value="auto">{t('app.language.auto')}</option>
+                                                    <option value="zh">{t('app.language.zh')}</option>
+                                                    <option value="en">{t('app.language.en')}</option>
+                                                    <option value="yue">{t('app.language.yue')}</option>
+                                                    <option value="ja">{t('app.language.ja')}</option>
                                                     <option value="ko">Korean</option>
                                                     {/* Other supported languages */}
                                                     <option value="ar">Arabic</option>
@@ -847,7 +855,7 @@ function App() {
                                         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                                     >
                                         <div className="flex items-center justify-between mb-4">
-                                            <span className="text-xs font-medium text-white/40 uppercase tracking-wider">
+                                            <span className="text-xs font-medium text-secondary uppercase tracking-wider">
                                                 Transcription
                                             </span>
                                             <AnimatePresence mode="wait">
@@ -891,7 +899,7 @@ function App() {
 
                                         {isProcessing && !transcription && !streamingText ? (
                                             <div className="space-y-3">
-                                                <div className="flex items-center gap-2 text-white/60 text-sm">
+                                                <div className="flex items-center gap-2 text-secondary text-sm">
                                                     <div className="w-4 h-4 border-2 border-cyan-400/40 border-t-cyan-400 rounded-full animate-spin" />
                                                     <span>Processing... {processingTime > 0 ? `${processingTime}s` : ''}</span>
                                                 </div>
@@ -900,7 +908,7 @@ function App() {
                                             </div>
                                         ) : (
                                             <motion.p
-                                                className="text-lg leading-relaxed text-white/90 whitespace-pre-wrap"
+                                                className="text-lg leading-relaxed text-primary whitespace-pre-wrap"
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
                                                 transition={{ delay: 0.1 }}
@@ -928,10 +936,10 @@ function App() {
                                         {/* Header */}
                                         <div className="flex items-center justify-between mb-4">
                                             <div className="flex items-center gap-3">
-                                                <span className="text-xs font-medium text-white/40 uppercase tracking-wider">
+                                                <span className="text-xs font-medium text-secondary uppercase tracking-wider">
                                                     Batch Processing
                                                 </span>
-                                                <span className="text-xs text-white/30">
+                                                <span className="text-xs text-secondary">
                                                     {batchQueue.filter(i => i.status === 'complete').length}/{batchQueue.length} completed
                                                 </span>
                                             </div>
@@ -1028,17 +1036,17 @@ function App() {
                                                             {/* Filename */}
                                                             <span className={cn(
                                                                 "text-sm truncate",
-                                                                item.status === 'complete' && "text-white/90",
-                                                                item.status === 'processing' && "text-cyan-400",
-                                                                item.status === 'error' && "text-red-400",
-                                                                item.status === 'pending' && "text-white/40"
+                                                                item.status === 'complete' && "text-primary",
+                                                                item.status === 'processing' && "text-cyan-700 dark:text-cyan-400",
+                                                                item.status === 'error' && "text-red-700 dark:text-red-400",
+                                                                item.status === 'pending' && "text-secondary"
                                                             )}>
                                                                 {item.file.name}
                                                             </span>
 
                                                             {/* Processing Time */}
                                                             {item.processingTime && item.processingTime > 0 && (
-                                                                <span className="text-xs text-white/30">
+                                                                <span className="text-xs text-secondary">
                                                                     {item.processingTime}s
                                                                 </span>
                                                             )}
@@ -1047,8 +1055,8 @@ function App() {
                                                         {/* Expand Icon */}
                                                         {(item.status === 'complete' || item.status === 'error') && (
                                                             expandedBatchItems.has(item.id)
-                                                                ? <ChevronUp className="w-4 h-4 text-white/40" />
-                                                                : <ChevronDown className="w-4 h-4 text-white/40" />
+                                                                ? <ChevronUp className="w-4 h-4 text-secondary" />
+                                                                : <ChevronDown className="w-4 h-4 text-secondary" />
                                                         )}
                                                     </button>
 
@@ -1065,7 +1073,7 @@ function App() {
                                                                 <div className="px-4 pb-3 pt-0">
                                                                     <p className={cn(
                                                                         "text-sm leading-relaxed whitespace-pre-wrap",
-                                                                        item.status === 'error' ? "text-red-300" : "text-white/70"
+                                                                        item.status === 'error' ? "text-red-700 dark:text-red-300" : "text-secondary"
                                                                     )}>
                                                                         {item.result}
                                                                     </p>
@@ -1084,9 +1092,9 @@ function App() {
                 </AnimatePresence>
 
                 <motion.footer
-                    className="mt-12 text-center text-sm text-white/20"
+                    className="mt-12 text-center text-sm text-secondary"
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
+                    animate={{ opacity: 0.5 }}
                     transition={{ delay: 0.8 }}
                 >
                     Powered by FunASR
