@@ -140,6 +140,7 @@ async def get_models() -> List[Dict[str, Any]]:
     for name in asr_model_manager.MODELS.keys():
         models_status.append({
             "name": name,
+            "type": asr_model_manager.get_model_type(name),
             "downloaded": asr_model_manager.is_model_downloaded(name)
         })
     return models_status

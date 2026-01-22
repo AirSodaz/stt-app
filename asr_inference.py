@@ -96,8 +96,17 @@ class ASRModelManager:
     # Model definitions
     MODELS = {
         "SenseVoiceSmall": "iic/SenseVoiceSmall",
-        "Paraformer": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online",
+        "Paraformer": "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+        "Paraformer-Online": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online",
         "Fun-ASR-Nano": "FunAudioLLM/Fun-ASR-Nano-2512",
+    }
+
+    # Model types (offline vs online)
+    MODEL_TYPES = {
+        "SenseVoiceSmall": "offline",
+        "Paraformer": "offline",
+        "Paraformer-Online": "online",
+        "Fun-ASR-Nano": "offline",
     }
 
     def __init__(self, model_cache_dir: str = "./models"):
@@ -143,6 +152,13 @@ class ASRModelManager:
 
         model_path = os.path.join(self.model_cache_dir, model_id)
         return os.path.exists(os.path.join(model_path, "config.yaml"))
+
+    def get_model_type(self, model_name: str) -> str:
+        """
+        Get the type of the model (offline or online).
+        Defaults to 'offline' if unknown.
+        """
+        return self.MODEL_TYPES.get(model_name, "offline")
 
     def get_downloaded_models(self) -> List[str]:
         """
@@ -223,7 +239,9 @@ class ASRModelManager:
                 if model_name == "SenseVoiceSmall":
                     self.model = self._initialize_sense_voice(model_dir)
                 elif model_name == "Paraformer":
-                    self.model = self._initialize_paraformer(model_dir)
+                    self.model = self._initialize_paraformer_offline(model_dir)
+                elif model_name == "Paraformer-Online":
+                    self.model = self._initialize_paraformer_online(model_dir)
                 elif model_name == "Fun-ASR-Nano":
                     self.model = self._initialize_fun_asr_nano(model_dir)
                 else:
@@ -279,7 +297,58 @@ class ASRModelManager:
             disable_update=True,
         )
 
-    def _initialize_paraformer(self, model_dir: str) -> AutoModel:
+    def _initialize_paraformer_offline(self, model_dir: str) -> AutoModel:
+        """
+        Initialize Paraformer offline model for batch/file transcription.
+        This model has built-in VAD and punctuation, optimized for non-realtime use.
+        Uses the speech_paraformer-large-vad-punc model.
+        """
+        config_path = os.path.join(model_dir, "config.yaml")
+        config = OmegaConf.load(config_path)
+
+        # Build tokenizer_conf for CharTokenizer
+        tokenizer_conf: Dict[str, Any] = {
+            "token_list": os.path.join(model_dir, "tokens.json"),
+        }
+        yaml_tokenizer_conf = config.get("tokenizer_conf", {})
+        if yaml_tokenizer_conf:
+            tokenizer_conf.update(dict(yaml_tokenizer_conf))
+
+        # Build frontend_conf
+        frontend_conf = dict(config.get("frontend_conf", {}))
+        mvn_file_path = os.path.join(model_dir, "am.mvn")
+        if os.path.exists(mvn_file_path):
+            frontend_conf["cmvn_file"] = mvn_file_path
+
+        return AutoModel(
+            model=config["model"],
+            model_path=model_dir,
+            model_conf=dict(config.get("model_conf", {})),
+            init_param=os.path.join(model_dir, "model.pt"),
+            tokenizer=config.get("tokenizer", "CharTokenizer"),
+            tokenizer_conf=tokenizer_conf,
+            frontend=config.get("frontend", "WavFrontend"),
+            frontend_conf=frontend_conf,
+            encoder=config.get("encoder"),
+            encoder_conf=dict(config.get("encoder_conf", {})),
+            decoder=config.get("decoder"),
+            decoder_conf=dict(config.get("decoder_conf", {})),
+            predictor=config.get("predictor"),
+            predictor_conf=dict(config.get("predictor_conf", {})),
+            specaug=config.get("specaug"),
+            specaug_conf=dict(config.get("specaug_conf", {})),
+            ctc_conf=dict(config.get("ctc_conf", {})),
+            trust_remote_code=False,
+            device=self.device,
+            # Even though the model name suggests built-in VAD/punc, 
+            # we still need to add them for proper Chinese text output
+            vad_model="fsmn-vad",
+            vad_kwargs={"max_single_segment_time": 60000},
+            punc_model="ct-punc",
+            disable_update=True,
+        )
+
+    def _initialize_paraformer_online(self, model_dir: str) -> AutoModel:
         """
         Specific initialization for Paraformer streaming model with config patches.
         Works around FunASR 1.3.0 bug by explicitly loading all config parameters.

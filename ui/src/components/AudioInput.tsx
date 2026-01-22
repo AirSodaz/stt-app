@@ -5,21 +5,25 @@ import { cn } from '../lib/utils';
 
 interface AudioInputProps {
     onAudioReady: (file: Blob) => void;
+    onMultipleFilesReady?: (files: File[]) => void;
     isProcessing: boolean;
     // Streaming mode props
     isStreamingMode?: boolean;
     isStreaming?: boolean;
     onStartStreaming?: () => void;
     onStopStreaming?: () => void;
+    showUpload?: boolean;
 }
 
 export function AudioInput({
     onAudioReady,
+    onMultipleFilesReady,
     isProcessing,
     isStreamingMode = false,
     isStreaming = false,
     onStartStreaming,
-    onStopStreaming
+    onStopStreaming,
+    showUpload = true
 }: AudioInputProps) {
     const [isRecording, setIsRecording] = useState(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -81,13 +85,80 @@ export function AudioInput({
     const isActive = isStreamingMode ? isStreaming : isRecording;
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            onAudioReady(e.target.files[0]);
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        if (files.length > 1 && onMultipleFilesReady) {
+            // Batch mode: multiple files selected
+            onMultipleFilesReady(Array.from(files));
+        } else if (files.length === 1) {
+            // Single file mode
+            onAudioReady(files[0]);
+        }
+        // Reset input to allow re-selecting same files
+        e.target.value = '';
+    };
+
+    const [isDragging, setIsDragging] = useState(false);
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!showUpload || isProcessing || isActive) return;
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        if (!showUpload || isProcessing || isActive) return;
+
+        const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('audio/'));
+
+        if (files.length === 0) return;
+
+        if (files.length > 1 && onMultipleFilesReady) {
+            onMultipleFilesReady(files);
+        } else if (files.length === 1) {
+            onAudioReady(files[0]);
         }
     };
 
     return (
-        <div className="flex flex-col items-center gap-8 w-full">
+        <div
+            className={cn(
+                "flex flex-col items-center gap-8 w-full p-8 rounded-3xl transition-all duration-300",
+                isDragging && "bg-cyan-500/10 ring-2 ring-cyan-500/50 scale-105"
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+        >
+            {/* Drag Overlay Message */}
+            <AnimatePresence>
+                {isDragging && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="absolute inset-0 z-50 flex items-center justify-center rounded-3xl bg-black/60 backdrop-blur-sm"
+                    >
+                        <div className="flex flex-col items-center gap-4 text-cyan-400">
+                            <Upload className="w-16 h-16 animate-bounce" />
+                            <p className="text-2xl font-bold">Drop audio files here</p>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Main Record Button */}
             <div className="relative">
                 <motion.button
@@ -166,13 +237,13 @@ export function AudioInput({
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.2 }}
                 >
-                    {isActive ? "Tap again to stop" : "Or upload an audio file"}
+                    {isActive ? "Tap again to stop" : "Or drag & drop audio files here"}
                 </motion.p>
             </div>
 
             {/* Upload Button */}
             <AnimatePresence>
-                {!isActive && !isProcessing && (
+                {!isActive && !isProcessing && showUpload && (
                     <motion.label
                         className="glass-upload cursor-pointer"
                         initial={{ opacity: 0, y: 20 }}
@@ -187,6 +258,7 @@ export function AudioInput({
                         <input
                             type="file"
                             accept="audio/*"
+                            multiple
                             className="hidden"
                             onChange={handleFileUpload}
                         />

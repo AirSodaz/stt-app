@@ -2,11 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { AudioInput } from './components/AudioInput';
-import { Bot, Copy, Check, Settings2, Settings } from 'lucide-react';
+import { Bot, Copy, Check, Settings2, Settings, FileAudio, Radio, Trash2, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import { cn } from './lib/utils';
 import { SettingsPage } from './components/SettingsPage';
 import { useStreamingASR } from './hooks/useStreamingASR';
 import { logger } from './lib/logger';
+import { SaveOptionsModal } from './components/SaveOptionsModal';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { join } from '@tauri-apps/api/path';
 
 function App() {
     const [transcription, setTranscription] = useState("");
@@ -16,13 +19,14 @@ function App() {
     const [useItn, setUseItn] = useState(false);
     // Model is null until we load preference or user selects one
     const [model, setModel] = useState<string | null>(null);
-    const [availableModels, setAvailableModels] = useState<{ name: string, downloaded: boolean }[]>([]);
+    const [availableModels, setAvailableModels] = useState<{ name: string, downloaded: boolean, type?: string }[]>([]);
     const [downloadedModels, setDownloadedModels] = useState<string[]>([]);
     const [isDownloading, setIsDownloading] = useState<string | null>(null);
     const [downloadProgress, setDownloadProgress] = useState<number>(0);
 
     const [downloadMessage, setDownloadMessage] = useState<string>("");
     const [showSettings, setShowSettings] = useState(false);
+    const [activeTab, setActiveTab] = useState<'offline' | 'realtime'>('offline');
 
     // Server connection state
     const [isLoadingModels, setIsLoadingModels] = useState(true);
@@ -36,6 +40,19 @@ function App() {
 
     // Processing time tracking (in seconds)
     const [processingTime, setProcessingTime] = useState<number>(0);
+
+    // Batch processing state
+    interface BatchItem {
+        id: string;
+        file: File;
+        status: 'pending' | 'processing' | 'complete' | 'error';
+        result?: string;
+        processingTime?: number;
+    }
+    const [batchQueue, setBatchQueue] = useState<BatchItem[]>([]);
+    const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+    const [expandedBatchItems, setExpandedBatchItems] = useState<Set<string>>(new Set());
+    const [showSaveModal, setShowSaveModal] = useState(false);
 
     // Callback for streaming partial results
     const handlePartialResult = useCallback((text: string, isFinal: boolean) => {
@@ -365,6 +382,183 @@ function App() {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    // Batch processing handlers
+    const handleMultipleFilesReady = useCallback((files: File[]) => {
+        const items: BatchItem[] = files.map((file) => ({
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            file,
+            status: 'pending' as const,
+        }));
+        setBatchQueue(items);
+        setExpandedBatchItems(new Set());
+        // Auto-start processing
+        processBatchQueue(items);
+    }, [model, language, useItn]);
+
+    const processBatchItem = async (item: BatchItem): Promise<BatchItem> => {
+        const formData = new FormData();
+        formData.append("file", item.file, item.file.name);
+        formData.append("language", language);
+        formData.append("use_itn", useItn.toString());
+        if (model) formData.append("model", model);
+
+        let processingTime = 0;
+
+        try {
+            const response = await fetch("http://127.0.0.1:8000/transcribe_stream", {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) {
+                throw new Error("Failed to get response reader");
+            }
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let result = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (data.status === "processing") {
+                                processingTime = data.heartbeat;
+                            } else if (data.status === "complete") {
+                                result = data.text || "[No speech detected]";
+                            } else if (data.status === "error") {
+                                throw new Error(data.message);
+                            }
+                        } catch (e) {
+                            if (e instanceof SyntaxError) continue;
+                            throw e;
+                        }
+                    }
+                }
+            }
+
+            return { ...item, status: 'complete', result, processingTime };
+        } catch (error) {
+            logger.error(`Batch item error for ${item.file.name}:`, error);
+            return { ...item, status: 'error', result: `Error: ${error}`, processingTime };
+        }
+    };
+
+    const processBatchQueue = async (items: BatchItem[]) => {
+        if (!model) {
+            logger.error("No model selected for batch processing");
+            return;
+        }
+
+        setIsBatchProcessing(true);
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            // Update status to processing
+            setBatchQueue(prev => prev.map(q =>
+                q.id === item.id ? { ...q, status: 'processing' as const } : q
+            ));
+
+            const processedItem = await processBatchItem(item);
+
+            // Update with result
+            setBatchQueue(prev => prev.map(q =>
+                q.id === item.id ? processedItem : q
+            ));
+
+            // Auto-expand completed item
+            setExpandedBatchItems(prev => new Set([...prev, item.id]));
+        }
+
+        setIsBatchProcessing(false);
+    };
+
+    const copyAllBatchResults = () => {
+        const allResults = batchQueue
+            .filter(item => item.status === 'complete' && item.result)
+            .map(item => `[${item.file.name}]\n${item.result}`)
+            .join('\n\n');
+        navigator.clipboard.writeText(allResults);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const saveBatchResults = () => {
+        setShowSaveModal(true);
+    };
+
+    const handleSaveConfirm = async (mode: 'merge' | 'separate', path: string) => {
+        try {
+            const completedItems = batchQueue.filter(item => item.status === 'complete' && item.result);
+            if (completedItems.length === 0) {
+                alert("No completed items to save.");
+                return;
+            }
+
+            if (mode === 'merge') {
+                const allResults = completedItems
+                    .map(item => `[${item.file.name}]\n${item.result}`)
+                    .join('\n\n');
+
+                const timestamp = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+                const filename = `batch_transcription_${timestamp}.txt`;
+                const fullPath = await join(path, filename);
+
+                await writeTextFile(fullPath, allResults);
+                alert(`Successfully saved to ${fullPath}`);
+            } else {
+                let savedCount = 0;
+                for (const item of completedItems) {
+                    // Simple filename sanitization or just append .txt
+                    const originalName = item.file.name;
+                    const nameWithoutExt = originalName.lastIndexOf('.') !== -1
+                        ? originalName.substring(0, originalName.lastIndexOf('.'))
+                        : originalName;
+
+                    const filename = `${nameWithoutExt}.txt`;
+                    const fullPath = await join(path, filename);
+
+                    await writeTextFile(fullPath, item.result || "");
+                    savedCount++;
+                }
+                alert(`Successfully saved ${savedCount} files to ${path}`);
+            }
+        } catch (error) {
+            logger.error("Failed to save files:", error);
+            alert(`Failed to save: ${error}`);
+        }
+    };
+
+    const clearBatchQueue = () => {
+        setBatchQueue([]);
+        setExpandedBatchItems(new Set());
+    };
+
+    const toggleBatchItemExpand = (id: string) => {
+        setExpandedBatchItems(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
+
     return (
         <div className="min-h-screen relative overflow-hidden">
             {/* Animated Background */}
@@ -412,7 +606,48 @@ function App() {
                     )}
                 </motion.header>
 
-                {/* Main Card */}
+                {/* Tabs */}
+                {!showSettings && (
+                    <div className="flex justify-center mb-8">
+                        <div className="bg-white/5 p-1 rounded-xl flex gap-1 border border-white/10">
+                            <button
+                                onClick={() => {
+                                    setActiveTab('offline');
+                                    // Reset model if current one is not valid for this tab
+                                    const currentModelType = availableModels.find(m => m.name === model)?.type || 'offline';
+                                    if (currentModelType === 'online') setModel(null);
+                                }}
+                                className={cn(
+                                    "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium",
+                                    activeTab === 'offline'
+                                        ? "bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/10"
+                                        : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                                )}
+                            >
+                                <FileAudio className="w-4 h-4" />
+                                Offline
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setActiveTab('realtime');
+                                    // Reset model if current one is not valid for this tab
+                                    const currentModelType = availableModels.find(m => m.name === model)?.type || 'offline';
+                                    if (currentModelType !== 'online') setModel(null);
+                                }}
+                                className={cn(
+                                    "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium",
+                                    activeTab === 'realtime'
+                                        ? "bg-cyan-500/20 text-cyan-400 shadow-lg shadow-cyan-500/10"
+                                        : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                                )}
+                            >
+                                <Radio className="w-4 h-4" />
+                                Real-time
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Main Card */}
                 <AnimatePresence mode="wait">
                     {showSettings ? (
@@ -439,9 +674,11 @@ function App() {
                             <div className="glass-card glass-card-light p-8">
                                 <AudioInput
                                     onAudioReady={handleAudioReady}
-                                    isProcessing={isProcessing}
-                                    isStreamingMode={model === "Paraformer"}
+                                    onMultipleFilesReady={handleMultipleFilesReady}
+                                    isProcessing={isProcessing || isBatchProcessing}
+                                    isStreamingMode={activeTab === 'realtime'}
                                     isStreaming={isStreaming}
+                                    showUpload={activeTab === 'offline'}
                                     onStartStreaming={() => {
                                         setTranscription("");
                                         setIsProcessing(true);
@@ -486,14 +723,14 @@ function App() {
                                     )}
 
                                     <div className="flex flex-wrap justify-center gap-4">
-                                        {/* Model Selector - Only downloaded models */}
+                                        {/* Model Selector - Filtered by Tab */}
                                         <select
                                             value={model || ""}
                                             onChange={(e) => {
                                                 const newModel = e.target.value;
                                                 handleModelChange(newModel);
                                                 // Reset language logic based on model capability
-                                                if (newModel === "Paraformer") {
+                                                if (newModel === "Paraformer-Online" || newModel === "Paraformer") {
                                                     setLanguage("zh");
                                                 } else {
                                                     setLanguage("auto");
@@ -503,16 +740,26 @@ function App() {
                                             title="Select Model"
                                             disabled={downloadedModels.length === 0}
                                         >
-                                            {downloadedModels.length === 0 ? (
-                                                <option value="">No models available</option>
+                                            {downloadedModels.filter(name => {
+                                                const m = availableModels.find(am => am.name === name);
+                                                const type = m?.type || 'offline';
+                                                return activeTab === 'realtime' ? type === 'online' : type !== 'online';
+                                            }).length === 0 ? (
+                                                <option value="">No {activeTab} models available</option>
                                             ) : (
                                                 <>
                                                     {!model && <option value="">Select a model...</option>}
-                                                    {downloadedModels.map((name) => (
-                                                        <option key={name} value={name}>
-                                                            {name}
-                                                        </option>
-                                                    ))}
+                                                    {downloadedModels
+                                                        .filter(name => {
+                                                            const m = availableModels.find(am => am.name === name);
+                                                            const type = m?.type || 'offline';
+                                                            return activeTab === 'realtime' ? type === 'online' : type !== 'online';
+                                                        })
+                                                        .map((name) => (
+                                                            <option key={name} value={name}>
+                                                                {name}
+                                                            </option>
+                                                        ))}
                                                 </>
                                             )}
                                         </select>
@@ -521,8 +768,8 @@ function App() {
                                             value={language}
                                             onChange={(e) => setLanguage(e.target.value)}
                                             className="glass-select"
-                                            disabled={!model || model === "Paraformer"}
-                                            title={model === "Paraformer" ? "Language locked to Chinese" : "Select Language"}
+                                            disabled={!model || model === "Paraformer-Online" || model === "Paraformer"}
+                                            title={model === "Paraformer-Online" || model === "Paraformer" ? "Language locked to Chinese" : "Select Language"}
                                         >
                                             {(!model || model === "SenseVoiceSmall") && (
                                                 <>
@@ -534,7 +781,7 @@ function App() {
                                                     <option value="yue">Cantonese</option>
                                                 </>
                                             )}
-                                            {model === "Paraformer" && (
+                                            {(model === "Paraformer" || model === "Paraformer-Online") && (
                                                 <option value="zh">Chinese</option>
                                             )}
                                             {model === "Fun-ASR-Nano" && (
@@ -579,8 +826,8 @@ function App() {
                                         <button
                                             onClick={() => setUseItn(!useItn)}
                                             className={cn("glass-toggle", useItn && "active")}
-                                            disabled={model === "Paraformer"}
-                                            title={model === "Paraformer" ? "ITN not available in streaming mode" : "Toggle Inverse Text Normalization"}
+                                            disabled={model === "Paraformer-Online"}
+                                            title={model === "Paraformer-Online" ? "ITN not available in streaming mode" : "Toggle Inverse Text Normalization"}
                                         >
                                             <Settings2 className="w-4 h-4" />
                                             <span>ITN {useItn ? "On" : "Off"}</span>
@@ -667,6 +914,171 @@ function App() {
                                     </motion.div>
                                 )}
                             </AnimatePresence>
+
+                            {/* Batch Processing Results */}
+                            <AnimatePresence>
+                                {batchQueue.length > 0 && (
+                                    <motion.div
+                                        className="result-card p-6"
+                                        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                                    >
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs font-medium text-white/40 uppercase tracking-wider">
+                                                    Batch Processing
+                                                </span>
+                                                <span className="text-xs text-white/30">
+                                                    {batchQueue.filter(i => i.status === 'complete').length}/{batchQueue.length} completed
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {batchQueue.some(i => i.status === 'complete') && (
+                                                    <>
+                                                        <motion.button
+                                                            onClick={saveBatchResults}
+                                                            className="copy-button flex items-center gap-1 text-xs mr-2"
+                                                            title="Save as .txt"
+                                                            whileHover={{ scale: 1.05 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                        >
+                                                            <Download className="w-3 h-3" />
+                                                            <span>Save</span>
+                                                        </motion.button>
+                                                        <motion.button
+                                                            onClick={copyAllBatchResults}
+                                                            className="copy-button flex items-center gap-1 text-xs"
+                                                            title="Copy all results"
+                                                            whileHover={{ scale: 1.05 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                        >
+                                                            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                                            <span>Copy All</span>
+                                                        </motion.button>
+                                                    </>
+                                                )}
+                                                {!isBatchProcessing && (
+                                                    <motion.button
+                                                        onClick={clearBatchQueue}
+                                                        className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors"
+                                                        title="Clear queue"
+                                                        whileHover={{ scale: 1.05 }}
+                                                        whileTap={{ scale: 0.95 }}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </motion.button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Progress Bar */}
+                                        {isBatchProcessing && (
+                                            <div className="mb-4">
+                                                <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                                                    <motion.div
+                                                        className="h-full bg-linear-to-r from-cyan-500 to-blue-500"
+                                                        initial={{ width: 0 }}
+                                                        animate={{
+                                                            width: `${(batchQueue.filter(i => i.status === 'complete' || i.status === 'error').length / batchQueue.length) * 100}%`
+                                                        }}
+                                                        transition={{ duration: 0.3 }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* File List */}
+                                        <div className="space-y-2 max-h-96 overflow-y-auto">
+                                            {batchQueue.map((item) => (
+                                                <motion.div
+                                                    key={item.id}
+                                                    className={cn(
+                                                        "rounded-lg border transition-colors",
+                                                        item.status === 'processing' && "bg-cyan-500/10 border-cyan-500/30",
+                                                        item.status === 'complete' && "bg-emerald-500/5 border-emerald-500/20",
+                                                        item.status === 'error' && "bg-red-500/10 border-red-500/30",
+                                                        item.status === 'pending' && "bg-white/5 border-white/10"
+                                                    )}
+                                                    layout
+                                                >
+                                                    {/* Item Header */}
+                                                    <button
+                                                        onClick={() => toggleBatchItemExpand(item.id)}
+                                                        className="w-full px-4 py-3 flex items-center justify-between text-left"
+                                                        disabled={item.status === 'pending'}
+                                                    >
+                                                        <div className="flex items-center gap-3 min-w-0">
+                                                            {/* Status Icon */}
+                                                            {item.status === 'pending' && (
+                                                                <div className="w-4 h-4 rounded-full bg-white/20" />
+                                                            )}
+                                                            {item.status === 'processing' && (
+                                                                <div className="w-4 h-4 border-2 border-cyan-400/40 border-t-cyan-400 rounded-full animate-spin" />
+                                                            )}
+                                                            {item.status === 'complete' && (
+                                                                <Check className="w-4 h-4 text-emerald-400" />
+                                                            )}
+                                                            {item.status === 'error' && (
+                                                                <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center text-white text-xs">!</div>
+                                                            )}
+
+                                                            {/* Filename */}
+                                                            <span className={cn(
+                                                                "text-sm truncate",
+                                                                item.status === 'complete' && "text-white/90",
+                                                                item.status === 'processing' && "text-cyan-400",
+                                                                item.status === 'error' && "text-red-400",
+                                                                item.status === 'pending' && "text-white/40"
+                                                            )}>
+                                                                {item.file.name}
+                                                            </span>
+
+                                                            {/* Processing Time */}
+                                                            {item.processingTime && item.processingTime > 0 && (
+                                                                <span className="text-xs text-white/30">
+                                                                    {item.processingTime}s
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Expand Icon */}
+                                                        {(item.status === 'complete' || item.status === 'error') && (
+                                                            expandedBatchItems.has(item.id)
+                                                                ? <ChevronUp className="w-4 h-4 text-white/40" />
+                                                                : <ChevronDown className="w-4 h-4 text-white/40" />
+                                                        )}
+                                                    </button>
+
+                                                    {/* Expanded Content */}
+                                                    <AnimatePresence>
+                                                        {expandedBatchItems.has(item.id) && item.result && (
+                                                            <motion.div
+                                                                initial={{ height: 0, opacity: 0 }}
+                                                                animate={{ height: 'auto', opacity: 1 }}
+                                                                exit={{ height: 0, opacity: 0 }}
+                                                                transition={{ duration: 0.2 }}
+                                                                className="overflow-hidden"
+                                                            >
+                                                                <div className="px-4 pb-3 pt-0">
+                                                                    <p className={cn(
+                                                                        "text-sm leading-relaxed whitespace-pre-wrap",
+                                                                        item.status === 'error' ? "text-red-300" : "text-white/70"
+                                                                    )}>
+                                                                        {item.result}
+                                                                    </p>
+                                                                </div>
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
+                                                </motion.div>
+                                            ))}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </motion.main>
                     )}
                 </AnimatePresence>
@@ -680,7 +1092,13 @@ function App() {
                     Powered by FunASR
                 </motion.footer>
             </div>
-        </div>
+
+            <SaveOptionsModal
+                isOpen={showSaveModal}
+                onClose={() => setShowSaveModal(false)}
+                onConfirm={handleSaveConfirm}
+            />
+        </div >
     );
 }
 
