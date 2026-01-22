@@ -28,8 +28,14 @@ function App() {
     const [isLoadingModels, setIsLoadingModels] = useState(true);
     const [serverStatus, setServerStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
 
+    // Model loading state: 'idle' = no model loaded, 'loading' = loading in progress, 'ready' = model ready
+    const [modelLoadingStatus, setModelLoadingStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
+
     // Streaming state
     const [streamingText, setStreamingText] = useState("");
+
+    // Processing time tracking (in seconds)
+    const [processingTime, setProcessingTime] = useState<number>(0);
 
     // Callback for streaming partial results
     const handlePartialResult = useCallback((text: string, isFinal: boolean) => {
@@ -88,6 +94,17 @@ function App() {
             const res = await axios.get("http://127.0.0.1:8000/preference/model");
             if (res.data?.model) {
                 setModel(res.data.model);
+                // Check if this model is already loaded
+                const statusRes = await axios.get("http://127.0.0.1:8000/models/status");
+                if (statusRes.data?.loaded_model === res.data.model) {
+                    setModelLoadingStatus('ready');
+                } else if (statusRes.data?.is_loading && statusRes.data?.loading_model === res.data.model) {
+                    setModelLoadingStatus('loading');
+                    // Start polling for completion
+                    pollModelStatus(res.data.model);
+                } else {
+                    setModelLoadingStatus('idle');
+                }
             }
         } catch (err) {
             logger.error("Failed to load model preference:", err);
@@ -98,10 +115,50 @@ function App() {
         try {
             const formData = new FormData();
             formData.append("model_name", modelName);
-            await axios.post("http://127.0.0.1:8000/preference/model", formData);
+            const res = await axios.post("http://127.0.0.1:8000/preference/model", formData);
+            return res.data;
         } catch (err) {
             logger.error("Failed to save model preference:", err);
+            return null;
         }
+    }, []);
+
+    // Poll model status until loaded
+    const pollModelStatus = useCallback(async (targetModel: string) => {
+        const maxAttempts = 120; // 2 minutes max
+        let attempts = 0;
+
+        const poll = async () => {
+            try {
+                const res = await axios.get("http://127.0.0.1:8000/models/status");
+                const { loaded_model, is_loading, error } = res.data;
+
+                if (error) {
+                    logger.error("Model loading error:", error);
+                    setModelLoadingStatus('idle');
+                    return;
+                }
+
+                if (loaded_model === targetModel) {
+                    setModelLoadingStatus('ready');
+                    logger.debug(`Model ${targetModel} is now ready`);
+                    return;
+                }
+
+                if (is_loading && attempts < maxAttempts) {
+                    attempts++;
+                    setTimeout(poll, 1000);
+                } else if (!is_loading && loaded_model !== targetModel) {
+                    // Loading finished but not for our model - might have been cancelled
+                    setModelLoadingStatus('idle');
+                }
+            } catch (err) {
+                logger.error("Failed to poll model status:", err);
+                setModelLoadingStatus('idle');
+            }
+        };
+
+        poll();
     }, []);
 
     useEffect(() => {
@@ -149,9 +206,22 @@ function App() {
         return () => clearInterval(interval);
     }, [serverStatus, isDownloading]);
 
-    const handleModelChange = (newModel: string) => {
+    const handleModelChange = async (newModel: string) => {
         setModel(newModel);
-        saveModelPreference(newModel);
+        setModelLoadingStatus('loading');
+
+        const result = await saveModelPreference(newModel);
+
+        if (result?.status === 'ready') {
+            // Model was already loaded
+            setModelLoadingStatus('ready');
+        } else if (result?.status === 'loading') {
+            // Model is loading in background, poll for completion
+            pollModelStatus(newModel);
+        } else {
+            // Error or unexpected
+            setModelLoadingStatus('idle');
+        }
     };
 
     const handleDownloadModel = async (modelName: string) => {
@@ -213,6 +283,7 @@ function App() {
 
         setIsProcessing(true);
         setTranscription("");
+        setProcessingTime(0);
 
         logger.debug(`Sending audio blob to server, size: ${audioBlob.size} bytes`);
 
@@ -223,21 +294,68 @@ function App() {
         formData.append("model", model);
 
         try {
-            const response = await axios.post("http://127.0.0.1:8000/transcribe", formData, {
-                headers: { "Content-Type": "multipart/form-data" },
+            // Use SSE endpoint for streaming response with heartbeat
+            const response = await fetch("http://127.0.0.1:8000/transcribe_stream", {
+                method: "POST",
+                body: formData,
             });
-            logger.debug("Server response:", response.data);
-            const text = response.data.text;
-            if (text) {
-                setTranscription(text);
-            } else {
-                setTranscription("[No speech detected]");
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) {
+                throw new Error("Failed to get response reader");
+            }
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // Process complete SSE messages
+                const lines = buffer.split("\n\n");
+                buffer = lines.pop() || ""; // Keep incomplete message in buffer
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+
+                            if (data.status === "processing") {
+                                // Heartbeat received, update processing time
+                                setProcessingTime(data.heartbeat);
+                                logger.debug(`[SSE] Heartbeat: ${data.heartbeat}`);
+                            } else if (data.status === "complete") {
+                                // Final result
+                                const text = data.text;
+                                if (text) {
+                                    setTranscription(text);
+                                } else {
+                                    setTranscription("[No speech detected]");
+                                }
+                                logger.debug("[SSE] Transcription complete");
+                            } else if (data.status === "error") {
+                                setTranscription(`Error: ${data.message}`);
+                                logger.error("[SSE] Transcription error:", data.message);
+                            }
+                        } catch (e) {
+                            logger.error("[SSE] Failed to parse message:", e);
+                        }
+                    }
+                }
             }
         } catch (error) {
             logger.error("Transcription error:", error);
             setTranscription("Error: Could not transcribe audio. Ensure backend is running.");
         } finally {
             setIsProcessing(false);
+            setProcessingTime(0);
         }
     };
 
@@ -352,6 +470,18 @@ function App() {
                                     {!model && downloadedModels.length > 0 && (
                                         <div className="text-cyan-400/90 text-sm text-center px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
                                             Please select a model to start transcribing.
+                                        </div>
+                                    )}
+                                    {/* Model loading indicator */}
+                                    {model && modelLoadingStatus === 'loading' && (
+                                        <div className="text-cyan-400/90 text-sm text-center px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center gap-2">
+                                            <div className="w-4 h-4 border-2 border-cyan-400/40 border-t-cyan-400 rounded-full animate-spin" />
+                                            <span>Loading model...</span>
+                                        </div>
+                                    )}
+                                    {model && modelLoadingStatus === 'ready' && (
+                                        <div className="text-emerald-400/90 text-xs text-center px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                            ✓ Model ready
                                         </div>
                                     )}
 
@@ -514,6 +644,10 @@ function App() {
 
                                         {isProcessing && !transcription && !streamingText ? (
                                             <div className="space-y-3">
+                                                <div className="flex items-center gap-2 text-white/60 text-sm">
+                                                    <div className="w-4 h-4 border-2 border-cyan-400/40 border-t-cyan-400 rounded-full animate-spin" />
+                                                    <span>Processing... {processingTime > 0 ? `${processingTime}s` : ''}</span>
+                                                </div>
                                                 <div className="skeleton h-4 w-3/4" />
                                                 <div className="skeleton h-4 w-1/2" />
                                             </div>

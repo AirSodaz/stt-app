@@ -55,6 +55,14 @@ def save_preferences(prefs: Dict[str, Any]) -> None:
 download_progress: Dict[str, Dict[str, Any]] = {}
 # Format: {"model_name": {"status": "downloading"|"complete"|"error", "progress": 0-100, "message": "..."}}
 
+# Model loading state tracking
+model_loading_state: Dict[str, Any] = {
+    "is_loading": False,
+    "loading_model": None,
+    "loaded_model": None,
+    "error": None
+}
+
 
 def update_download_progress(model_name: str, status: str, progress: int, message: str = "") -> None:
     """Update download progress for a model."""
@@ -82,26 +90,10 @@ async def lifespan(app: FastAPI):
     os.makedirs(TEMP_DIR, exist_ok=True)
     logger.info(f"Created temp directory: {TEMP_DIR}")
     
-    # Load previously selected model if available and downloaded
-    prefs = load_preferences()
-    saved_model = prefs.get("selected_model")
-    if saved_model and asr_model_manager:
-        # Only load if the model is actually downloaded
-        if not asr_model_manager.is_model_downloaded(saved_model):
-            logger.warning(f"Startup: Saved model '{saved_model}' is not downloaded, skipping load.")
-            saved_model = None
-        else:
-            logger.info(f"Startup: Loading saved model '{saved_model}'...")
-    
-    if saved_model and asr_model_manager:
-        try:
-             # Run in executor to avoid blocking startup (though startup is async, so await is fine if we want to block)
-             # But let's use executor to be safe and consistent with other async ops
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, asr_model_manager.load_model, saved_model)
-            logger.info(f"Startup: Successfully loaded model '{saved_model}'")
-        except Exception as e:
-            logger.error(f"Startup: Failed to load saved model '{saved_model}': {e}")
+    # Note: We no longer load the model at startup.
+    # Model loading is deferred until user requests transcription or explicitly loads a model.
+    # This ensures /models endpoint responds quickly.
+    logger.info("Startup: Model loading deferred. Server ready to accept requests.")
             
     yield
     
@@ -164,6 +156,24 @@ async def get_downloaded_models() -> List[str]:
     return asr_model_manager.get_downloaded_models()
 
 
+@app.get("/models/status")
+async def get_model_status() -> Dict[str, Any]:
+    """
+    Get the current model loading status.
+    Returns:
+        - loaded_model: Name of the currently loaded model, or null
+        - is_loading: Whether a model is currently being loaded
+        - loading_model: Name of the model being loaded (if is_loading is true)
+        - error: Error message if loading failed
+    """
+    return {
+        "loaded_model": model_loading_state["loaded_model"],
+        "is_loading": model_loading_state["is_loading"],
+        "loading_model": model_loading_state["loading_model"],
+        "error": model_loading_state["error"]
+    }
+
+
 @app.get("/preference/model")
 async def get_model_preference() -> Dict[str, Optional[str]]:
     """
@@ -186,7 +196,9 @@ async def get_model_preference() -> Dict[str, Optional[str]]:
 @app.post("/preference/model")
 async def set_model_preference(model_name: str = Form(...)) -> Dict[str, str]:
     """
-    Save the user's model preference.
+    Save the user's model preference and trigger background loading.
+    Returns immediately while model loads in background.
+    Use GET /models/status to check loading progress.
     """
     if asr_model_manager is None:
         raise HTTPException(status_code=500, detail="ASR Manager not initialized.")
@@ -194,20 +206,52 @@ async def set_model_preference(model_name: str = Form(...)) -> Dict[str, str]:
     if model_name not in asr_model_manager.MODELS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
     
+    # Check if model is downloaded
+    if not asr_model_manager.is_model_downloaded(model_name):
+        raise HTTPException(status_code=400, detail=f"Model not downloaded: {model_name}")
+    
     # Save preference
     prefs = load_preferences()
     prefs["selected_model"] = model_name
     save_preferences(prefs)
     
-    # Trigger model load in background to ensure it's ready
-    # We await it so the user knows when it's ready (optional, but better UX for "Applied")
-    try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, asr_model_manager.load_model, model_name)
-        return {"status": "success", "message": f"Model loaded: {model_name}"}
-    except Exception as e:
-        logger.error(f"Failed to load model {model_name}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+    # Check if model is already loaded
+    if asr_model_manager.current_model_name == model_name and asr_model_manager.model is not None:
+        model_loading_state["loaded_model"] = model_name
+        model_loading_state["is_loading"] = False
+        model_loading_state["loading_model"] = None
+        model_loading_state["error"] = None
+        return {"status": "ready", "message": f"Model already loaded: {model_name}"}
+    
+    # Check if already loading this model
+    if model_loading_state["is_loading"] and model_loading_state["loading_model"] == model_name:
+        return {"status": "loading", "message": f"Model is loading: {model_name}"}
+    
+    # Start loading in background thread
+    def load_model_background():
+        try:
+            model_loading_state["is_loading"] = True
+            model_loading_state["loading_model"] = model_name
+            model_loading_state["error"] = None
+            
+            logger.info(f"Background loading model: {model_name}")
+            asr_model_manager.load_model(model_name)
+            
+            model_loading_state["loaded_model"] = model_name
+            model_loading_state["is_loading"] = False
+            model_loading_state["loading_model"] = None
+            logger.info(f"Background loading complete: {model_name}")
+        except Exception as e:
+            logger.error(f"Background loading failed for {model_name}: {e}")
+            model_loading_state["is_loading"] = False
+            model_loading_state["loading_model"] = None
+            model_loading_state["error"] = str(e)
+    
+    thread = threading.Thread(target=load_model_background)
+    thread.daemon = True
+    thread.start()
+    
+    return {"status": "loading", "message": f"Model loading started: {model_name}"}
 
 
 # Download output buffer for capturing tqdm progress
@@ -364,7 +408,8 @@ async def transcribe_audio(
     file: UploadFile = File(...),
     language: str = Form("auto"),
     use_itn: bool = Form(False),
-    model: str = Form(None)
+    model: str = Form(None),
+    show_emoji: bool = Form(True)
 ) -> Dict[str, str]:
     """
     Transcribe an uploaded audio file.
@@ -402,14 +447,16 @@ async def transcribe_audio(
             logger.warning("Received empty audio file!")
             return {"text": ""}
             
-        logger.info(f"Transcribing {temp_file_path} with language={language}, use_itn={use_itn}, model={model}")
+        logger.info(f"Transcribing {temp_file_path} with language={language}, use_itn={use_itn}, model={model}, show_emoji={show_emoji}")
         
-        # Run inference
-        text = asr_model_manager.transcribe(
+        # Run inference in a separate thread to avoid blocking the event loop
+        text = await asyncio.to_thread(
+            asr_model_manager.transcribe,
             temp_file_path, 
             language=language, 
             use_itn=use_itn, 
-            model_name=model
+            model_name=model,
+            show_emoji=show_emoji
         )
         
         # DEBUG: Log the result
@@ -430,6 +477,105 @@ async def transcribe_audio(
         #         logger.debug(f"Removed temp file: {temp_file_path}")
         #     except OSError as e:
         #         logger.warning(f"Failed to remove temp file {temp_file_path}: {e}")
+
+@app.post("/transcribe_stream")
+async def transcribe_audio_stream(
+    file: UploadFile = File(...),
+    language: str = Form("auto"),
+    use_itn: bool = Form(False),
+    model: str = Form(None),
+    show_emoji: bool = Form(True)
+):
+    """
+    Transcribe an uploaded audio file with SSE progress updates.
+    This endpoint sends heartbeat messages during processing to prevent timeout.
+    """
+    if asr_model_manager is None:
+        logger.error("ASR Model Manager is not initialized.")
+        raise HTTPException(status_code=500, detail="Speech-to-text model manager not initialized.")
+
+    # Save uploaded file
+    file_extension = os.path.splitext(file.filename)[1] if file.filename else ""
+    temp_filename = f"{uuid.uuid4()}{file_extension}"
+    temp_file_path = os.path.join(TEMP_DIR, temp_filename)
+    
+    try:
+        with open(temp_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        file_size = os.path.getsize(temp_file_path)
+        logger.info(f"[SSE] Received file: {file.filename}, size: {file_size} bytes")
+        
+        if file_size == 0:
+            logger.warning("[SSE] Received empty audio file!")
+            async def empty_response():
+                yield f"data: {json.dumps({'status': 'complete', 'text': ''})}\n\n"
+            return StreamingResponse(empty_response(), media_type="text/event-stream")
+            
+    except Exception as e:
+        logger.error(f"[SSE] Failed to save uploaded file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    # Create a result container for the background thread
+    result_container = {"text": None, "error": None, "done": False}
+    
+    def run_transcription():
+        """Run transcription in background thread."""
+        try:
+            logger.info(f"[SSE] Starting transcription with model={model}")
+            text = asr_model_manager.transcribe(
+                temp_file_path,
+                language=language,
+                use_itn=use_itn,
+                model_name=model,
+                show_emoji=show_emoji
+            )
+            result_container["text"] = text
+            logger.info(f"[SSE] Transcription complete: '{text[:50]}...'" if len(text) > 50 else f"[SSE] Transcription complete: '{text}'")
+        except Exception as e:
+            logger.error(f"[SSE] Transcription error: {e}")
+            result_container["error"] = str(e)
+        finally:
+            result_container["done"] = True
+    
+    async def generate_sse_events():
+        """Generate SSE events with heartbeat during processing."""
+        # Start transcription in background
+        thread = threading.Thread(target=run_transcription)
+        thread.start()
+        
+        heartbeat_count = 0
+        
+        # Send processing status and heartbeats until done
+        while not result_container["done"]:
+            heartbeat_count += 1
+            yield f"data: {json.dumps({'status': 'processing', 'heartbeat': heartbeat_count})}\n\n"
+            await asyncio.sleep(1)  # Send heartbeat every second
+        
+        # Send final result
+        if result_container["error"]:
+            yield f"data: {json.dumps({'status': 'error', 'message': result_container['error']})}\n\n"
+        else:
+            text = result_container["text"] or ""
+            yield f"data: {json.dumps({'status': 'complete', 'text': text})}\n\n"
+        
+        # Cleanup temp file
+        try:
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+        except Exception as e:
+            logger.warning(f"[SSE] Failed to cleanup temp file: {e}")
+    
+    return StreamingResponse(
+        generate_sse_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
 
 @app.websocket("/ws/transcribe")
 async def websocket_transcribe(websocket: WebSocket):

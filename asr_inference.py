@@ -14,11 +14,78 @@ except ImportError:
     pass  # Model module may not exist in older versions
 from modelscope import snapshot_download
 from omegaconf import OmegaConf
+import re
 
 # Configure logging
 # Configure logging
 # logging config is handled by the main entry point (server.py)
 logger = logging.getLogger(__name__)
+
+# SenseVoice emoji mappings (official)
+SENSEVOICE_EMOJI_DICT = {
+    "<|nospeech|><|Event_UNK|>": "❓",
+    "<|zh|>": "",
+    "<|en|>": "",
+    "<|yue|>": "",
+    "<|ja|>": "",
+    "<|ko|>": "",
+    "<|nospeech|>": "",
+    "<|HAPPY|>": "😊",
+    "<|SAD|>": "😔",
+    "<|ANGRY|>": "😡",
+    "<|NEUTRAL|>": "",
+    "<|BGM|>": "🎼",
+    "<|Speech|>": "",
+    "<|Applause|>": "👏",
+    "<|Laughter|>": "😀",
+    "<|FEARFUL|>": "😰",
+    "<|DISGUSTED|>": "🤢",
+    "<|SURPRISED|>": "😮",
+    "<|Cry|>": "😭",
+    "<|EMO_UNKNOWN|>": "",
+    "<|Sneeze|>": "🤧",
+    "<|Breath|>": "",
+    "<|Cough|>": "😷",
+    "<|Sing|>": "",
+    "<|Speech_Noise|>": "",
+    "<|withitn|>": "",
+    "<|woitn|>": "",
+    "<|GBG|>": "",
+    "<|Event_UNK|>": "",
+}
+
+
+def sensevoice_postprocess(text: str, show_emoji: bool = True) -> str:
+    """
+    Post-process SenseVoice output text.
+    
+    Args:
+        text: Raw transcription text with tags like <|zh|>, <|HAPPY|>, etc.
+        show_emoji: If True, convert emotion/event tags to emojis.
+                   If False, remove all tags without showing emojis.
+    
+    Returns:
+        Cleaned transcription text with optional emojis.
+    """
+    # First normalize tags with spaces: "< | zh | >" -> "<|zh|>"
+    text = re.sub(r'<\s*\|\s*([^|]*?)\s*\|\s*>', lambda m: f'<|{m.group(1).strip()}|>', text)
+    
+    if show_emoji:
+        # Replace tags with emojis (sorted by length to handle multi-tag patterns first)
+        for tag, emoji in sorted(SENSEVOICE_EMOJI_DICT.items(), key=lambda x: -len(x[0])):
+            text = text.replace(tag, emoji)
+    else:
+        # Remove all tags without emojis
+        for tag in SENSEVOICE_EMOJI_DICT.keys():
+            text = text.replace(tag, "")
+    
+    # Remove any remaining unrecognized tags
+    text = re.sub(r'<\|[^|]*\|>', '', text)
+    
+    # Clean up extra spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
 
 class ASRModelManager:
     """
@@ -50,7 +117,8 @@ class ASRModelManager:
         
         # Note: We no longer auto-load a model on init.
         # Models are loaded on demand when transcribe() is called.
-        self.lock = threading.Lock()
+        # Use RLock to allow re-entrant locking (transcribe calls load_model)
+        self.lock = threading.RLock()
         logger.info("ASRModelManager initialized. No model loaded yet.")
 
     def _get_device(self) -> str:
@@ -207,6 +275,7 @@ class ASRModelManager:
             device=self.device,
             vad_model="fsmn-vad",
             vad_kwargs={"max_single_segment_time": 30000},
+            punc_model="ct-punc",
             disable_update=True,
         )
 
@@ -332,7 +401,7 @@ class ASRModelManager:
         
         return AutoModel(**kwargs)
 
-    def transcribe(self, audio_input, language: str = "auto", use_itn: bool = False, model_name: str = None) -> str:
+    def transcribe(self, audio_input, language: str = "auto", use_itn: bool = False, model_name: str = None, show_emoji: bool = True) -> str:
         """
         Transcribe audio from file path or numpy array.
         
@@ -341,6 +410,7 @@ class ASRModelManager:
             language: Language code
             use_itn: Whether to use inverse text normalization
             model_name: Model to use
+            show_emoji: Whether to show emojis for emotion/event tags (SenseVoice only)
         """
         import numpy as np
         
@@ -361,63 +431,65 @@ class ASRModelManager:
         if self.model is None:
             raise RuntimeError("No model loaded.")
 
-        try:
-            # Prepare generate kwargs
-            generate_kwargs = {
-                "input": audio_input,
-                "use_itn": use_itn,
-            }
-            
-            # Fun-ASR-Nano does not support batch_size_s (it uses LLM decoding)
-            # It requires batch_size=1 and input as a list
-            if self.current_model_name == "Fun-ASR-Nano":
-                 generate_kwargs["batch_size"] = 1
-                 generate_kwargs["input"] = [audio_input]
-                 # Fix for "The attention mask and the pad token id were not set" warning
-                 # Fun-ASR-Nano uses Qwen tokenizer where eos_token_id is 151645
-                 # We explicitly set pad_token_id to eos_token_id on the generation_config to suppress warnings
-                 try:
-                     if hasattr(self.model, "model") and hasattr(self.model.model, "llm"):
-                         llm = self.model.model.llm
-                         if hasattr(llm, "generation_config") and llm.generation_config.pad_token_id is None:
-                              llm.generation_config.pad_token_id = llm.generation_config.eos_token_id
-                              logger.info(f"Set Fun-ASR-Nano pad_token_id to {llm.generation_config.pad_token_id}")
-                 except Exception as e:
-                     logger.warning(f"Failed to set pad_token_id for Fun-ASR-Nano: {e}")
-            else:
-                 generate_kwargs["batch_size_s"] = 60
-            
-            # SenseVoice specific params
-            if self.current_model_name == "SenseVoiceSmall":
-                generate_kwargs["language"] = language
-                generate_kwargs["merge_vad"] = True
-                generate_kwargs["merge_length_s"] = 15
-            
-            # Paraformer specific params
-            # Note: Do NOT set "cache" manually for Paraformer streaming unless managing state.
-            # The model will initialize it if missing.
-            # if self.current_model_name == "Paraformer":
-            #      generate_kwargs["cache"] = {"start_idx": 0}
-            
-            # Run inference
-            res = self.model.generate(**generate_kwargs)
-            
-            if not res:
-                return ""
+        # Acquire lock for thread-safe inference
+        with self.lock:
+            try:
+                # Prepare generate kwargs
+                generate_kwargs = {
+                    "input": audio_input,
+                    "use_itn": use_itn,
+                }
+                
+                # Fun-ASR-Nano does not support batch_size_s (it uses LLM decoding)
+                # It requires batch_size=1 and input as a list
+                if self.current_model_name == "Fun-ASR-Nano":
+                     generate_kwargs["batch_size"] = 1
+                     generate_kwargs["input"] = [audio_input]
+                     # Fix for "The attention mask and the pad token id were not set" warning
+                     # Fun-ASR-Nano uses Qwen tokenizer where eos_token_id is 151645
+                     # We explicitly set pad_token_id to eos_token_id on the generation_config to suppress warnings
+                     try:
+                         if hasattr(self.model, "model") and hasattr(self.model.model, "llm"):
+                             llm = self.model.model.llm
+                             if hasattr(llm, "generation_config") and llm.generation_config.pad_token_id is None:
+                                  llm.generation_config.pad_token_id = llm.generation_config.eos_token_id
+                                  logger.info(f"Set Fun-ASR-Nano pad_token_id to {llm.generation_config.pad_token_id}")
+                     except Exception as e:
+                         logger.warning(f"Failed to set pad_token_id for Fun-ASR-Nano: {e}")
+                else:
+                     generate_kwargs["batch_size_s"] = 60
+                
+                # SenseVoice specific params
+                if self.current_model_name == "SenseVoiceSmall":
+                    generate_kwargs["language"] = language
+                    generate_kwargs["merge_vad"] = True
+                    generate_kwargs["merge_length_s"] = 15
+                
+                # Paraformer specific params
+                # Note: Do NOT set "cache" manually for Paraformer streaming unless managing state.
+                # The model will initialize it if missing.
+                # if self.current_model_name == "Paraformer":
+                #      generate_kwargs["cache"] = {"start_idx": 0}
+                
+                # Run inference
+                res = self.model.generate(**generate_kwargs)
+                
+                if not res:
+                    return ""
 
-            # Post-process
-            text = ""
-            if isinstance(res, list) and len(res) > 0:
-                text = res[0].get("text", "")
-            
-            if self.current_model_name == "SenseVoiceSmall":
-                 text = rich_transcription_postprocess(text)
-            
-            return text
+                # Post-process
+                text = ""
+                if isinstance(res, list) and len(res) > 0:
+                    text = res[0].get("text", "")
+                
+                if self.current_model_name == "SenseVoiceSmall":
+                     text = sensevoice_postprocess(text, show_emoji=show_emoji)
+                
+                return text
 
-        except Exception as e:
-            logger.error(f"Error during transcription with {self.current_model_name}: {e}")
-            raise
+            except Exception as e:
+                logger.error(f"Error during transcription with {self.current_model_name}: {e}")
+                raise
 
     def inference_chunk(self, audio_chunk, cache: Dict[str, Any] = None, is_final: bool = False, model_name: str = None) -> Any:
         """
@@ -450,39 +522,41 @@ class ASRModelManager:
              # raising warning or passing through
              pass
 
-        try:
-            import numpy as np
-            
-            # Convert raw PCM bytes to numpy array
-            # Frontend sends Int16 PCM at 16kHz
-            if isinstance(audio_chunk, bytes) and len(audio_chunk) > 0:
-                # Convert Int16 bytes to numpy array
-                audio_data = np.frombuffer(audio_chunk, dtype=np.int16)
-                # Normalize to float32 [-1, 1] as expected by the model
-                audio_data = audio_data.astype(np.float32) / 32768.0
-                logger.info(f"[Streaming] Received {len(audio_chunk)} bytes -> {len(audio_data)} samples")
-            elif isinstance(audio_chunk, bytes) and len(audio_chunk) == 0:
-                audio_data = np.array([], dtype=np.float32)
-                logger.info("[Streaming] Received EOF (empty bytes)")
-            else:
-                audio_data = audio_chunk
-            
-            generate_kwargs = {
-                "input": audio_data,
-                "cache": cache if cache is not None else {},
-                "is_final": is_final,
-                # "chunk_size": [0, 10, 5], # Removed to avoid conflict with VAD
-                "encoder_chunk_look_back": 4,
-                "decoder_chunk_look_back": 1,
-            }
+        # Acquire lock for thread-safe inference
+        with self.lock:
+            try:
+                import numpy as np
+                
+                # Convert raw PCM bytes to numpy array
+                # Frontend sends Int16 PCM at 16kHz
+                if isinstance(audio_chunk, bytes) and len(audio_chunk) > 0:
+                    # Convert Int16 bytes to numpy array
+                    audio_data = np.frombuffer(audio_chunk, dtype=np.int16)
+                    # Normalize to float32 [-1, 1] as expected by the model
+                    audio_data = audio_data.astype(np.float32) / 32768.0
+                    logger.info(f"[Streaming] Received {len(audio_chunk)} bytes -> {len(audio_data)} samples")
+                elif isinstance(audio_chunk, bytes) and len(audio_chunk) == 0:
+                    audio_data = np.array([], dtype=np.float32)
+                    logger.info("[Streaming] Received EOF (empty bytes)")
+                else:
+                    audio_data = audio_chunk
+                
+                generate_kwargs = {
+                    "input": audio_data,
+                    "cache": cache if cache is not None else {},
+                    "is_final": is_final,
+                    # "chunk_size": [0, 10, 5], # Removed to avoid conflict with VAD
+                    "encoder_chunk_look_back": 4,
+                    "decoder_chunk_look_back": 1,
+                }
 
-            logger.info(f"[Streaming] Calling generate with is_final={is_final}")
-            res = self.model.generate(**generate_kwargs)
-            logger.info(f"[Streaming] Result: {res}")
-            return res
-            
-        except Exception as e:
-             logger.error(f"Error during streaming inference: {e}")
-             raise
+                logger.info(f"[Streaming] Calling generate with is_final={is_final}")
+                res = self.model.generate(**generate_kwargs)
+                logger.info(f"[Streaming] Result: {res}")
+                return res
+                
+            except Exception as e:
+                 logger.error(f"Error during streaming inference: {e}")
+                 raise
 
 

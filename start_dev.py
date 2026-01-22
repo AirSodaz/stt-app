@@ -24,9 +24,14 @@ def _kill_process_tree(pid):
                 timeout=10
             )
         else:
-            # Unix: send SIGTERM to process group
-            import signal
-            os.killpg(os.getpgid(pid), signal.SIGTERM)
+            # Unix/macOS: send SIGTERM to process group
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+                time.sleep(0.5)
+                # If still running, force kill
+                os.killpg(os.getpgid(pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # Process already terminated
     except Exception as e:
         logger.warning(f"[Start Script] Failed to kill process tree {pid}: {e}")
 
@@ -56,12 +61,19 @@ atexit.register(_cleanup_on_exit)
 
 def shutdown_backend_gracefully(backend_proc):
     if backend_proc.poll() is None:
-        logger.info("[Start Script] Sending CTRL_BREAK_EVENT to backend...")
+        if os.name == 'nt':
+            logger.info("[Start Script] Sending CTRL_BREAK_EVENT to backend...")
+        else:
+            logger.info("[Start Script] Sending SIGTERM to backend...")
         try:
-            # Use CTRL_BREAK_EVENT instead of CTRL_C_EVENT on Windows.
-            # When a process is created with CREATE_NEW_PROCESS_GROUP,
-            # CTRL_C_EVENT won't reach it, but CTRL_BREAK_EVENT will.
-            backend_proc.send_signal(signal.CTRL_BREAK_EVENT)
+            if os.name == 'nt':
+                # Use CTRL_BREAK_EVENT instead of CTRL_C_EVENT on Windows.
+                # When a process is created with CREATE_NEW_PROCESS_GROUP,
+                # CTRL_C_EVENT won't reach it, but CTRL_BREAK_EVENT will.
+                backend_proc.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                # Unix/macOS: send SIGTERM to the process group
+                os.killpg(os.getpgid(backend_proc.pid), signal.SIGTERM)
         except Exception as e:
             logger.error(f"[Start Script] Failed to send signal: {e}")
         
@@ -84,11 +96,14 @@ def main():
     ui_dir = os.path.join(root_dir, "ui")
 
     logger.info("[Start Script] Launching Backend Server...")
-    # Start backend in a new process group so we can send CTRL_C_EVENT to it specifically
+    # Start backend in a new process group so we can send signals to it specifically
     # without killing the script itself immediately, and handle signals manually.
     kwargs = {}
     if os.name == 'nt':
         kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        # Unix/macOS: start in a new session to create a process group
+        kwargs['start_new_session'] = True
 
     backend = subprocess.Popen([sys.executable, "server.py"], cwd=root_dir, **kwargs)
     _backend_proc = backend  # Store reference for atexit cleanup
@@ -100,8 +115,13 @@ def main():
     # Determine the npm command based on the OS
     npm_cmd = "npm.cmd" if os.name == 'nt' else "npm"
     
-    # Start the frontend
-    frontend = subprocess.Popen([npm_cmd, "run", "tauri", "dev"], cwd=ui_dir)
+    # Start the frontend with process group support
+    frontend_kwargs = {}
+    if os.name != 'nt':
+        # Unix/macOS: start in a new session to create a process group
+        frontend_kwargs['start_new_session'] = True
+    
+    frontend = subprocess.Popen([npm_cmd, "run", "tauri", "dev"], cwd=ui_dir, **frontend_kwargs)
     _frontend_proc = frontend  # Store reference for atexit cleanup
 
     try:
