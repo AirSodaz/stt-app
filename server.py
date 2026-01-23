@@ -604,7 +604,8 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
                    
                    try:
                        # Final chunk
-                       res = asr_model_manager.inference_chunk(
+                       res = await asyncio.to_thread(
+                           asr_model_manager.inference_chunk,
                            audio_data, 
                            cache=cache,
                            is_final=True,
@@ -635,7 +636,8 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
                 audio_data = audio_data.astype(np.float32) / 32768.0
                 
                 try:
-                    res = asr_model_manager.inference_chunk(
+                    res = await asyncio.to_thread(
+                        asr_model_manager.inference_chunk,
                         audio_data,
                         cache=cache,
                         is_final=False,
