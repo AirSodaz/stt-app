@@ -51,6 +51,11 @@ def update_download_progress(model_name: str, status: str, progress: int, messag
         "message": message
     }
 
+def save_uploaded_file(file_obj, dest_path: str) -> None:
+    """Helper to save uploaded file to disk in a thread-safe way."""
+    with open(dest_path, "wb") as buffer:
+        shutil.copyfileobj(file_obj, buffer)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Ensure temp dir exists (and clean it first)
@@ -392,8 +397,7 @@ async def transcribe_audio(
     temp_file_path = os.path.join(TEMP_DIR, temp_filename)
     
     try:
-        with open(temp_file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        await asyncio.to_thread(save_uploaded_file, file.file, temp_file_path)
         
         # DEBUG: Log file details
         file_size = os.path.getsize(temp_file_path)
@@ -454,8 +458,7 @@ async def transcribe_audio_stream(
     temp_file_path = os.path.join(TEMP_DIR, temp_filename)
     
     try:
-        with open(temp_file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        await asyncio.to_thread(save_uploaded_file, file.file, temp_file_path)
         
         file_size = os.path.getsize(temp_file_path)
         logger.info(f"[SSE] Received file: {file.filename}, size: {file_size} bytes")
