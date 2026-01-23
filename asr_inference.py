@@ -15,9 +15,8 @@ except ImportError:
 from modelscope import snapshot_download
 from omegaconf import OmegaConf
 import re
+import numpy as np
 
-# Configure logging
-# Configure logging
 # logging config is handled by the main entry point (server.py)
 logger = logging.getLogger(__name__)
 
@@ -484,7 +483,6 @@ class ASRModelManager:
             model_name: Model to use
             show_emoji: Whether to show emojis for emotion/event tags (SenseVoice only)
         """
-        import numpy as np
         
         # Check if it's a file path or numpy array
         is_file = isinstance(audio_input, str)
@@ -597,8 +595,6 @@ class ASRModelManager:
         # Acquire lock for thread-safe inference
         with self.lock:
             try:
-                import numpy as np
-                
                 # Convert raw PCM bytes to numpy array
                 # Frontend sends Int16 PCM at 16kHz
                 if isinstance(audio_chunk, bytes) and len(audio_chunk) > 0:
