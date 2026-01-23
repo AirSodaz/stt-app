@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import { useState, useEffect, useCallback, Suspense, lazy, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
@@ -30,6 +30,17 @@ function App() {
 
     const [downloadMessage, setDownloadMessage] = useState<string>("");
     const [showSettings, setShowSettings] = useState(false);
+    const settingsButtonRef = useRef<HTMLButtonElement>(null);
+    const previousShowSettings = useRef(showSettings);
+
+    useEffect(() => {
+        if (previousShowSettings.current === true && showSettings === false) {
+            // Restore focus to settings button when closing settings page
+            settingsButtonRef.current?.focus();
+        }
+        previousShowSettings.current = showSettings;
+    }, [showSettings]);
+
     const [activeTab, setActiveTab] = useState<'offline' | 'realtime'>('offline');
 
     // Server connection state
@@ -601,6 +612,7 @@ function App() {
 
                     {!showSettings && (
                         <button
+                            ref={settingsButtonRef}
                             onClick={() => setShowSettings(true)}
                             className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-slate-700 hover:text-slate-900 dark:text-white/80 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                             title={t('app.settings')}
