@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Square, Upload, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { logger } from '../lib/logger';
 
 interface AudioInputProps {
     onAudioReady: (file: Blob) => void;
@@ -35,15 +36,15 @@ export const AudioInput = memo(function AudioInput({
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const startRecording = async () => {
-        console.log('[AudioInput] startRecording called, isStreamingMode:', isStreamingMode);
+        logger.debug('[AudioInput] startRecording called, isStreamingMode:', isStreamingMode);
         // If streaming mode, use the streaming callbacks
         if (isStreamingMode && onStartStreaming) {
-            console.log('[AudioInput] Using streaming mode');
+            logger.debug('[AudioInput] Using streaming mode');
             onStartStreaming();
             return;
         }
 
-        console.log('[AudioInput] Using normal recording mode');
+        logger.debug('[AudioInput] Using normal recording mode');
         // Normal recording mode
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -59,7 +60,7 @@ export const AudioInput = memo(function AudioInput({
 
             mediaRecorder.onstop = () => {
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-                console.log(`[DEBUG] Audio blob created, size: ${blob.size} bytes`);
+                logger.debug(`[DEBUG] Audio blob created, size: ${blob.size} bytes`);
                 onAudioReady(blob);
                 stream.getTracks().forEach(track => track.stop());
             };
@@ -67,7 +68,7 @@ export const AudioInput = memo(function AudioInput({
             mediaRecorder.start();
             setIsRecording(true);
         } catch (err) {
-            console.error("Error accessing microphone:", err);
+            logger.error("Error accessing microphone:", err);
             alert("Could not access microphone.");
         }
     };
