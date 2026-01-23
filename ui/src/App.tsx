@@ -868,7 +868,7 @@ function App() {
                                     >
                                         <div className="flex items-center justify-between mb-4">
                                             <span className="text-xs font-medium text-secondary uppercase tracking-wider">
-                                                Transcription
+                                                {t('app.transcription')}
                                             </span>
                                             <AnimatePresence mode="wait">
                                                 {transcription && (
@@ -950,10 +950,10 @@ function App() {
                                         <div className="flex items-center justify-between mb-4">
                                             <div className="flex items-center gap-3">
                                                 <span className="text-xs font-medium text-secondary uppercase tracking-wider">
-                                                    Batch Processing
+                                                    {t('batch.title')}
                                                 </span>
                                                 <span className="text-xs text-secondary">
-                                                    {batchQueue.filter(i => i.status === 'complete').length}/{batchQueue.length} completed
+                                                    {t('batch.progress', { completed: batchQueue.filter(i => i.status === 'complete').length, total: batchQueue.length })}
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -961,32 +961,30 @@ function App() {
                                                     <>
                                                         <motion.button
                                                             onClick={saveBatchResults}
-                                                            className="copy-button flex items-center gap-1 text-xs mr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-lg"
+                                                            className="copy-button flex items-center justify-center w-8 h-8 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                                                             title={t('batch.save')}
                                                             aria-label={t('batch.save')}
                                                             whileHover={{ scale: 1.05 }}
                                                             whileTap={{ scale: 0.95 }}
                                                         >
-                                                            <Download className="w-3 h-3" />
-                                                            <span>Save</span>
+                                                            <Download className="w-4 h-4" />
                                                         </motion.button>
                                                         <motion.button
                                                             onClick={copyAllBatchResults}
-                                                            className="copy-button flex items-center gap-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-lg"
+                                                            className="copy-button flex items-center justify-center w-8 h-8 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                                                             title={t('batch.copyAll')}
                                                             aria-label={t('batch.copyAll')}
                                                             whileHover={{ scale: 1.05 }}
                                                             whileTap={{ scale: 0.95 }}
                                                         >
-                                                            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                                                            <span>Copy All</span>
+                                                            {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                                                         </motion.button>
                                                     </>
                                                 )}
                                                 {!isBatchProcessing && (
                                                     <motion.button
                                                         onClick={clearBatchQueue}
-                                                        className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                                                        className="p-1.5 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-red-500/10 dark:hover:bg-red-500/20 text-slate-500 dark:text-white/40 hover:text-red-500 dark:hover:text-red-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                                                         title={t('batch.clear')}
                                                         aria-label={t('batch.clear')}
                                                         whileHover={{ scale: 1.05 }}

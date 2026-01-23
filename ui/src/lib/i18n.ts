@@ -12,6 +12,7 @@ const resources = {
                 "copied": "Copied",
                 "offline": "Offline",
                 "realtime": "Real-time",
+                "transcription": "Transcription",
                 "error": {
                     "selectModel": "Error: Please select a model first.",
                     "transcribe": "Error: Could not transcribe audio. Ensure backend is running.",
@@ -59,7 +60,8 @@ const resources = {
                     "processing": "Processing",
                     "complete": "Complete",
                     "error": "Error"
-                }
+                },
+                "progress": "{{completed}}/{{total}} completed"
             },
             "settings": {
                 "title": "Settings",
@@ -103,6 +105,7 @@ const resources = {
                 "copied": "已复制",
                 "offline": "离线文件",
                 "realtime": "实时语音",
+                "transcription": "转录结果",
                 "error": {
                     "selectModel": "错误：请先选择一个模型。",
                     "transcribe": "错误：无法转录音频。请确保后台正在运行。",
@@ -150,7 +153,8 @@ const resources = {
                     "processing": "处理中",
                     "complete": "完成",
                     "error": "错误"
-                }
+                },
+                "progress": "已完成 {{completed}}/{{total}}"
             },
             "settings": {
                 "title": "设置",
