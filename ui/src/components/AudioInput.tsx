@@ -167,6 +167,7 @@ export function AudioInput({
                 <motion.button
                     onClick={isActive ? stopRecording : startRecording}
                     disabled={isProcessing && !isActive}
+                    aria-label={isActive ? t('audioInput.tapToStop') : t('audioInput.tapToSpeak')}
                     className={cn(
                         "relative flex items-center justify-center w-28 h-28 rounded-full transition-colors duration-300",
                         "border-2 shadow-2xl",
@@ -250,6 +251,7 @@ export function AudioInput({
                 {!isActive && !isProcessing && showUpload && (
                     <motion.label
                         className="glass-upload cursor-pointer"
+                        aria-label={t('audioInput.upload')}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 10 }}

@@ -602,6 +602,7 @@ function App() {
                             onClick={() => setShowSettings(true)}
                             className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-slate-700 hover:text-slate-900 dark:text-white/80 dark:hover:text-white"
                             title={t('app.settings')}
+                            aria-label={t('app.settings')}
                         >
                             <Settings className="w-6 h-6" />
                         </button>
@@ -746,7 +747,8 @@ function App() {
                                                 }
                                             }}
                                             className="glass-select"
-                                            title="Select Model"
+                                            title={t('app.model.placeholder')}
+                                            aria-label={t('app.model.placeholder')}
                                             disabled={downloadedModels.length === 0}
                                         >
                                             {downloadedModels.filter(name => {
@@ -778,6 +780,7 @@ function App() {
                                             onChange={(e) => setLanguage(e.target.value)}
                                             className="glass-select"
                                             title={model === "Paraformer-Online" || model === "Paraformer" ? t('app.model.locked') : t('app.model.selectLanguage')}
+                                            aria-label={model === "Paraformer-Online" || model === "Paraformer" ? t('app.model.locked') : t('app.model.selectLanguage')}
                                         >
                                             {(!model || model === "SenseVoiceSmall") && (
                                                 <>
@@ -836,6 +839,7 @@ function App() {
                                             className={cn("glass-toggle", useItn && "active")}
                                             disabled={model === "Paraformer-Online"}
                                             title={model === "Paraformer-Online" ? "ITN not available in streaming mode" : "Toggle Inverse Text Normalization"}
+                                            aria-label={model === "Paraformer-Online" ? "ITN not available in streaming mode" : "Toggle Inverse Text Normalization"}
                                         >
                                             <Settings2 className="w-4 h-4" />
                                             <span>ITN {useItn ? "On" : "Off"}</span>
@@ -864,7 +868,8 @@ function App() {
                                                         key="copy-btn"
                                                         onClick={copyToClipboard}
                                                         className="copy-button"
-                                                        title="Copy text"
+                                                        title={copied ? t('app.copied') : t('app.copy')}
+                                                        aria-label={copied ? t('app.copied') : t('app.copy')}
                                                         initial={{ opacity: 0, scale: 0.8 }}
                                                         animate={{ opacity: 1, scale: 1 }}
                                                         exit={{ opacity: 0, scale: 0.8 }}
@@ -949,7 +954,8 @@ function App() {
                                                         <motion.button
                                                             onClick={saveBatchResults}
                                                             className="copy-button flex items-center gap-1 text-xs mr-2"
-                                                            title="Save as .txt"
+                                                            title={t('batch.save')}
+                                                            aria-label={t('batch.save')}
                                                             whileHover={{ scale: 1.05 }}
                                                             whileTap={{ scale: 0.95 }}
                                                         >
@@ -959,7 +965,8 @@ function App() {
                                                         <motion.button
                                                             onClick={copyAllBatchResults}
                                                             className="copy-button flex items-center gap-1 text-xs"
-                                                            title="Copy all results"
+                                                            title={t('batch.copyAll')}
+                                                            aria-label={t('batch.copyAll')}
                                                             whileHover={{ scale: 1.05 }}
                                                             whileTap={{ scale: 0.95 }}
                                                         >
@@ -972,7 +979,8 @@ function App() {
                                                     <motion.button
                                                         onClick={clearBatchQueue}
                                                         className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors"
-                                                        title="Clear queue"
+                                                        title={t('batch.clear')}
+                                                        aria-label={t('batch.clear')}
                                                         whileHover={{ scale: 1.05 }}
                                                         whileTap={{ scale: 0.95 }}
                                                     >
@@ -1017,6 +1025,7 @@ function App() {
                                                         onClick={() => toggleBatchItemExpand(item.id)}
                                                         className="w-full px-4 py-3 flex items-center justify-between text-left"
                                                         disabled={item.status === 'pending'}
+                                                        aria-expanded={expandedBatchItems.has(item.id)}
                                                     >
                                                         <div className="flex items-center gap-3 min-w-0">
                                                             {/* Status Icon */}

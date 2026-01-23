@@ -8,6 +8,8 @@ const resources = {
             "app": {
                 "title": "STT AI",
                 "settings": "Settings",
+                "copy": "Copy text",
+                "copied": "Copied",
                 "offline": "Offline",
                 "realtime": "Real-time",
                 "error": {
@@ -61,6 +63,7 @@ const resources = {
             },
             "settings": {
                 "title": "Settings",
+                "back": "Go back",
                 "appearance": "Appearance",
                 "theme": {
                     "light": "Light",
@@ -96,6 +99,8 @@ const resources = {
             "app": {
                 "title": "STT AI",
                 "settings": "设置",
+                "copy": "复制文本",
+                "copied": "已复制",
                 "offline": "离线文件",
                 "realtime": "实时语音",
                 "error": {
@@ -149,6 +154,7 @@ const resources = {
             },
             "settings": {
                 "title": "设置",
+                "back": "返回",
                 "appearance": "外观",
                 "theme": {
                     "light": "浅色",
