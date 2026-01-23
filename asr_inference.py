@@ -59,6 +59,11 @@ sorted_tags = sorted(SENSEVOICE_EMOJI_DICT.keys(), key=lambda k: -len(k))
 # Create a single regex for all tags. This is more efficient than iterating.
 SENSEVOICE_TAG_PATTERN = re.compile("|".join(re.escape(tag) for tag in sorted_tags))
 
+# Compiled regex patterns for sensevoice_postprocess optimization
+TAG_NORMALIZATION_PATTERN = re.compile(r'<\s*\|\s*([^|]*?)\s*\|\s*>')
+UNRECOGNIZED_TAG_PATTERN = re.compile(r'<\|[^|]*\|>')
+WHITESPACE_PATTERN = re.compile(r'\s+')
+
 
 def sensevoice_postprocess(text: str, show_emoji: bool = True) -> str:
     """
@@ -73,7 +78,7 @@ def sensevoice_postprocess(text: str, show_emoji: bool = True) -> str:
         Cleaned transcription text with optional emojis.
     """
     # First normalize tags with spaces: "< | zh | >" -> "<|zh|>"
-    text = re.sub(r'<\s*\|\s*([^|]*?)\s*\|\s*>', lambda m: f'<|{m.group(1).strip()}|>', text)
+    text = TAG_NORMALIZATION_PATTERN.sub(lambda m: f'<|{m.group(1).strip()}|>', text)
     
 
     def replace_tag(match):
@@ -87,10 +92,10 @@ def sensevoice_postprocess(text: str, show_emoji: bool = True) -> str:
     text = SENSEVOICE_TAG_PATTERN.sub(replace_tag, text)
     
     # Remove any remaining unrecognized tags
-    text = re.sub(r'<\|[^|]*\|>', '', text)
+    text = UNRECOGNIZED_TAG_PATTERN.sub('', text)
     
     # Clean up extra spaces
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = WHITESPACE_PATTERN.sub(' ', text).strip()
     
     return text
 
