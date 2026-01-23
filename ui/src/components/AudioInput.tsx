@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Square, Upload, Loader2 } from 'lucide-react';
@@ -17,7 +17,7 @@ interface AudioInputProps {
     isModelReady?: boolean;
 }
 
-export function AudioInput({
+export const AudioInput = memo(function AudioInput({
     onAudioReady,
     onMultipleFilesReady,
     isProcessing,
@@ -284,4 +284,4 @@ export function AudioInput({
             </AnimatePresence>
         </div >
     );
-}
+});

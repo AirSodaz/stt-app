@@ -268,7 +268,7 @@ function App() {
         }
     };
 
-    const handleAudioReady = async (audioBlob: Blob) => {
+    const handleAudioReady = useCallback(async (audioBlob: Blob) => {
         if (!model) {
             setTranscription(t('app.error.selectModel'));
             return;
@@ -350,7 +350,7 @@ function App() {
             setIsProcessing(false);
             setProcessingTime(0);
         }
-    };
+    }, [model, language, useItn, t]);
 
     const copyToClipboard = () => {
         navigator.clipboard.writeText(transcription);
@@ -535,6 +535,19 @@ function App() {
         });
     };
 
+    // Memoized handlers to prevent AudioInput re-renders during high-frequency transcription updates
+    const handleStartStreamingWrapper = useCallback(() => {
+        setTranscription("");
+        setIsProcessing(true);
+        startStreaming();
+    }, [startStreaming]);
+
+    const handleStopStreamingWrapper = useCallback(() => {
+        stopStreaming();
+        // Keep isProcessing=true to show loader until final result
+        setIsProcessing(true);
+    }, [stopStreaming]);
+
     return (
         <div className="min-h-screen relative overflow-hidden">
             {/* Animated Background */}
@@ -656,6 +669,7 @@ function App() {
                             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                         >
                             <div className="glass-card glass-card-light p-8">
+                                {/* AudioInput is memoized to avoid re-renders when transcription state updates */}
                                 <AudioInput
                                     onAudioReady={handleAudioReady}
                                     onMultipleFilesReady={handleMultipleFilesReady}
@@ -664,16 +678,8 @@ function App() {
                                     isStreaming={isStreaming}
                                     showUpload={activeTab === 'offline'}
                                     isModelReady={!!model && modelLoadingStatus === 'ready'}
-                                    onStartStreaming={() => {
-                                        setTranscription("");
-                                        setIsProcessing(true);
-                                        startStreaming();
-                                    }}
-                                    onStopStreaming={() => {
-                                        stopStreaming();
-                                        // Keep isProcessing=true to show loader until final result
-                                        setIsProcessing(true);
-                                    }}
+                                    onStartStreaming={handleStartStreamingWrapper}
+                                    onStopStreaming={handleStopStreamingWrapper}
                                 />
 
                                 {/* Settings Quick View */}
