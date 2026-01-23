@@ -140,6 +140,8 @@ class ASRModelManager:
         # Models are loaded on demand when transcribe() is called.
         # Use RLock to allow re-entrant locking (transcribe calls load_model)
         self.lock = threading.RLock()
+        # Use RLock for download_lock to allow re-entrant calls from load_model -> download_model
+        self.download_lock = threading.RLock()
         logger.info("ASRModelManager initialized. No model loaded yet.")
 
     def _get_device(self) -> str:
@@ -184,17 +186,19 @@ class ASRModelManager:
         """
         if model_name not in self.MODELS:
              raise ValueError(f"Unknown model: {model_name}")
-             
-        model_id = self.MODELS[model_name]
-        logger.info(f"Downloading model '{model_name}' ({model_id})...")
         
-        try:
-            model_dir = snapshot_download(model_id, cache_dir=self.model_cache_dir)
-            logger.info(f"Model '{model_name}' downloaded to {model_dir}")
-            return model_dir
-        except Exception as e:
-            logger.error(f"Failed to download model '{model_name}': {e}")
-            raise
+        # Ensure only one download happens at a time (globally or per model logic if extended)
+        with self.download_lock:
+            model_id = self.MODELS[model_name]
+            logger.info(f"Downloading model '{model_name}' ({model_id})...")
+
+            try:
+                model_dir = snapshot_download(model_id, cache_dir=self.model_cache_dir)
+                logger.info(f"Model '{model_name}' downloaded to {model_dir}")
+                return model_dir
+            except Exception as e:
+                logger.error(f"Failed to download model '{model_name}': {e}")
+                raise
     
     def get_model_path(self, model_name: str) -> str:
         """Get the expected local path for a model."""
@@ -217,6 +221,14 @@ class ASRModelManager:
              logger.info(f"Model '{model_name}' is already loaded.")
              return
 
+        # 1. Ensure download (OUTSIDE lock)
+        if not self.is_model_downloaded(model_name):
+            with self.download_lock:
+                 # Double-check inside download lock to prevent multiple downloads
+                 if not self.is_model_downloaded(model_name):
+                     logger.info(f"Model '{model_name}' not found locally. Downloading...")
+                     self.download_model(model_name)
+
         with self.lock:
             # Double-check inside lock
             if self.current_model_name == model_name and self.model is not None:
@@ -235,15 +247,12 @@ class ASRModelManager:
                 logger.info("Previous model unloaded.")
             
             try:
-                # 1. Ensure download
-                if not self.is_model_downloaded(model_name):
-                     logger.info(f"Model '{model_name}' not found locally. Downloading...")
-                     self.download_model(model_name)
-                
-                # Get path directly if downloaded
+                # Get path directly (should be downloaded now)
                 model_dir = self.get_model_path(model_name)
                 if not model_dir or not os.path.exists(model_dir):
-                    # Fallback just in case
+                    # Fallback just in case something went wrong or race condition
+                    # This might block, but it shouldn't happen if download succeeded above
+                    logger.warning(f"Model path for {model_name} not found despite download check. Re-downloading...")
                     model_dir = self.download_model(model_name)
                 
                 # 2. Initialize the model
