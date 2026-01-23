@@ -4,6 +4,10 @@ import { ArrowLeft, Moon, Sun, Laptop, Languages } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/utils';
 import { useTheme } from '../contexts/ThemeContext';
+import { Card } from './ui/Card';
+import { Button } from './ui/Button';
+import { SegmentedControl } from './ui/SegmentedControl';
+import { Badge } from './ui/Badge';
 
 interface Model {
     name: string;
@@ -40,6 +44,17 @@ export function SettingsPage({
         backButtonRef.current?.focus();
     }, []);
 
+    const languageOptions = [
+        { value: 'zh', label: '中文', icon: <Languages className="w-4 h-4" /> },
+        { value: 'en', label: 'English', icon: <Languages className="w-4 h-4" /> }
+    ];
+
+    const themeOptions = [
+        { value: 'light', label: t('settings.theme.light'), icon: <Sun className="w-4 h-4" /> },
+        { value: 'dark', label: t('settings.theme.dark'), icon: <Moon className="w-4 h-4" /> },
+        { value: 'auto', label: t('settings.theme.auto'), icon: <Laptop className="w-4 h-4" /> }
+    ];
+
     return (
         <motion.div
             className="flex-1 flex flex-col gap-6"
@@ -49,96 +64,43 @@ export function SettingsPage({
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         >
             <div className="flex items-center gap-4 mb-2">
-                <button
+                <Button
                     ref={backButtonRef}
                     onClick={onBack}
-                    className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                    variant="secondary"
+                    size="icon"
                     aria-label={t('settings.back')}
                 >
                     <ArrowLeft className="w-5 h-5" />
-                </button>
+                </Button>
                 <h2 className="text-xl font-semibold text-primary">{t('settings.title')}</h2>
             </div>
 
             {/* Language Section */}
-            <div className="glass-card glass-card-light p-6">
+            <Card variant="light" className="p-6">
                 <h3 className="text-sm font-medium text-secondary uppercase tracking-wider mb-4">
                     {t('settings.language')}
                 </h3>
-                <div className="flex gap-2 p-1 bg-black/5 dark:bg-white/5 rounded-xl">
-                    <button
-                        onClick={() => i18n.changeLanguage('zh')}
-                        className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
-                            i18n.language.startsWith('zh')
-                                ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
-                                : "text-secondary hover:text-primary"
-                        )}
-                    >
-                        <Languages className="w-4 h-4" />
-                        中文
-                    </button>
-                    <button
-                        onClick={() => i18n.changeLanguage('en')}
-                        className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
-                            i18n.language.startsWith('en')
-                                ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
-                                : "text-secondary hover:text-primary"
-                        )}
-                    >
-                        <Languages className="w-4 h-4" />
-                        English
-                    </button>
-                </div>
-            </div>
+                <SegmentedControl
+                    options={languageOptions}
+                    value={i18n.language.startsWith('zh') ? 'zh' : 'en'}
+                    onChange={(val) => i18n.changeLanguage(val)}
+                />
+            </Card>
 
             {/* Theme Section */}
-            <div className="glass-card glass-card-light p-6">
+            <Card variant="light" className="p-6">
                 <h3 className="text-sm font-medium text-secondary uppercase tracking-wider mb-4">
                     {t('settings.appearance')}
                 </h3>
-                <div className="flex gap-2 p-1 bg-black/5 dark:bg-white/5 rounded-xl">
-                    <button
-                        onClick={() => setTheme('light')}
-                        className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
-                            theme === 'light'
-                                ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
-                                : "text-secondary hover:text-primary"
-                        )}
-                    >
-                        <Sun className="w-4 h-4" />
-                        {t('settings.theme.light')}
-                    </button>
-                    <button
-                        onClick={() => setTheme('dark')}
-                        className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
-                            theme === 'dark'
-                                ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
-                                : "text-secondary hover:text-primary"
-                        )}
-                    >
-                        <Moon className="w-4 h-4" />
-                        {t('settings.theme.dark')}
-                    </button>
-                    <button
-                        onClick={() => setTheme('auto')}
-                        className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
-                            theme === 'auto'
-                                ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
-                                : "text-secondary hover:text-primary"
-                        )}
-                    >
-                        <Laptop className="w-4 h-4" />
-                        {t('settings.theme.auto')}
-                    </button>
-                </div>
-            </div>
+                <SegmentedControl
+                    options={themeOptions as any} // Cast to avoid strict literal type issues if they arise
+                    value={theme}
+                    onChange={(val) => setTheme(val as any)}
+                />
+            </Card>
 
-            <div className="glass-card glass-card-light p-8">
+            <Card variant="light" className="p-8">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-medium text-secondary uppercase tracking-wider">
                         {t('settings.modelManagement')}
@@ -175,19 +137,21 @@ export function SettingsPage({
                                         {m.name}
                                     </span>
                                     {m.downloaded ? (
-                                        <span className="text-emerald-500 dark:text-emerald-400 text-xs flex items-center gap-1">
+                                        <Badge variant="success" className="flex items-center gap-1">
                                             <span>✓</span> {t('settings.downloaded')}
-                                        </span>
+                                        </Badge>
                                     ) : isDownloading === m.name ? (
-                                        <span className="text-cyan-600 dark:text-cyan-400 text-xs">{downloadProgress}%</span>
+                                        <Badge variant="info">{downloadProgress}%</Badge>
                                     ) : (
-                                        <button
+                                        <Button
                                             onClick={() => onDownload(m.name)}
                                             disabled={isDownloading !== null}
-                                            className="text-xs px-3 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-700 dark:bg-cyan-600/60 dark:hover:bg-cyan-500/80 dark:text-white transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                                            variant="secondary"
+                                            size="sm"
+                                            className="text-xs h-7" // Custom override for smaller height
                                         >
                                             {t('settings.download')}
-                                        </button>
+                                        </Button>
                                     )}
                                 </div>
                                 {/* Progress bar */}
@@ -208,7 +172,7 @@ export function SettingsPage({
                         ))
                     )}
                 </div>
-            </div>
+            </Card>
         </motion.div >
     );
 }

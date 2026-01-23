@@ -9,6 +9,12 @@ import { useStreamingASR } from './hooks/useStreamingASR';
 import { logger } from './lib/logger';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
+import { Card } from './components/ui/Card';
+import { Button } from './components/ui/Button';
+import { SegmentedControl } from './components/ui/SegmentedControl';
+import { Select } from './components/ui/Select';
+import { Toggle } from './components/ui/Toggle';
+import { Badge } from './components/ui/Badge';
 
 // Lazy load heavy components
 const SettingsPage = lazy(() => import('./components/SettingsPage').then(module => ({ default: module.SettingsPage })));
@@ -548,6 +554,21 @@ function App() {
         setIsProcessing(true);
     }, [stopStreaming]);
 
+    const tabOptions = [
+        { value: 'offline', label: t('app.offline'), icon: <FileAudio className="w-4 h-4" /> },
+        { value: 'realtime', label: t('app.realtime'), icon: <Radio className="w-4 h-4" /> }
+    ];
+
+    const handleTabChange = (val: string) => {
+        setActiveTab(val as 'offline' | 'realtime');
+        const currentModelType = availableModels.find(m => m.name === model)?.type || 'offline';
+        if (val === 'realtime') {
+            if (currentModelType !== 'online') setModel(null);
+        } else {
+            if (currentModelType === 'online') setModel(null);
+        }
+    };
+
     return (
         <div className="min-h-screen relative overflow-hidden">
             {/* Animated Background */}
@@ -585,57 +606,27 @@ function App() {
                     </div>
 
                     {!showSettings && (
-                        <button
+                        <Button
                             ref={settingsButtonRef}
                             onClick={() => setShowSettings(true)}
-                            className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-slate-700 hover:text-slate-900 dark:text-white/80 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                            variant="ghost"
+                            size="icon"
                             title={t('app.settings')}
                             aria-label={t('app.settings')}
                         >
                             <Settings className="w-6 h-6" />
-                        </button>
+                        </Button>
                     )}
                 </motion.header>
 
                 {/* Tabs */}
                 {!showSettings && (
                     <div className="flex justify-center mb-8">
-                        <div className="bg-black/5 dark:bg-white/5 p-1 rounded-xl flex gap-1 border border-black/5 dark:border-white/10">
-                            <button
-                                onClick={() => {
-                                    setActiveTab('offline');
-                                    // Reset model if current one is not valid for this tab
-                                    const currentModelType = availableModels.find(m => m.name === model)?.type || 'offline';
-                                    if (currentModelType === 'online') setModel(null);
-                                }}
-                                className={cn(
-                                    "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
-                                    activeTab === 'offline'
-                                        ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 shadow-lg shadow-cyan-500/10"
-                                        : "text-slate-600 hover:text-slate-800 hover:bg-black/5 dark:text-white/70 dark:hover:text-white/90 dark:hover:bg-white/5"
-                                )}
-                            >
-                                <FileAudio className="w-4 h-4" />
-                                {t('app.offline')}
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setActiveTab('realtime');
-                                    // Reset model if current one is not valid for this tab
-                                    const currentModelType = availableModels.find(m => m.name === model)?.type || 'offline';
-                                    if (currentModelType !== 'online') setModel(null);
-                                }}
-                                className={cn(
-                                    "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
-                                    activeTab === 'realtime'
-                                        ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 shadow-lg shadow-cyan-500/10"
-                                        : "text-slate-600 hover:text-slate-800 hover:bg-black/5 dark:text-white/70 dark:hover:text-white/90 dark:hover:bg-white/5"
-                                )}
-                            >
-                                <Radio className="w-4 h-4" />
-                                {t('app.realtime')}
-                            </button>
-                        </div>
+                        <SegmentedControl
+                            options={tabOptions}
+                            value={activeTab}
+                            onChange={handleTabChange}
+                        />
                     </div>
                 )}
 
@@ -668,7 +659,7 @@ function App() {
                             exit={{ opacity: 0, x: 20 }}
                             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                         >
-                            <div className="glass-card glass-card-light p-8">
+                            <Card variant="light" className="p-8">
                                 {/* AudioInput is memoized to avoid re-renders when transcription state updates */}
                                 <AudioInput
                                     onAudioReady={handleAudioReady}
@@ -691,31 +682,31 @@ function App() {
                                 >
                                     {/* No model selected warning */}
                                     {!model && downloadedModels.length === 0 && (
-                                        <div className="text-amber-600 dark:text-amber-400/90 text-sm text-center px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                                        <Badge variant="warning">
                                             {t('app.model.noneDownloaded')}
-                                        </div>
+                                        </Badge>
                                     )}
                                     {!model && downloadedModels.length > 0 && (
-                                        <div className="text-cyan-600 dark:text-cyan-400/90 text-sm text-center px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                                        <Badge variant="info">
                                             {t('app.model.select')}
-                                        </div>
+                                        </Badge>
                                     )}
                                     {/* Model loading indicator */}
                                     {model && modelLoadingStatus === 'loading' && (
-                                        <div className="text-cyan-600 dark:text-cyan-400/90 text-sm text-center px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center gap-2">
-                                            <div className="w-4 h-4 border-2 border-cyan-600/40 dark:border-cyan-400/40 border-t-cyan-600 dark:border-t-cyan-400 rounded-full animate-spin" />
+                                        <Badge variant="info" className="flex items-center gap-2">
+                                            <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
                                             <span>{t('app.model.loading')}</span>
-                                        </div>
+                                        </Badge>
                                     )}
                                     {model && modelLoadingStatus === 'ready' && (
-                                        <div className="text-emerald-600 dark:text-emerald-400/90 text-xs text-center px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                        <Badge variant="success">
                                             ✓ {t('app.model.ready')}
-                                        </div>
+                                        </Badge>
                                     )}
 
                                     <div className="flex flex-wrap justify-center gap-4">
                                         {/* Model Selector - Filtered by Tab */}
-                                        <select
+                                        <Select
                                             value={model || ""}
                                             onChange={(e) => {
                                                 const newModel = e.target.value;
@@ -734,7 +725,6 @@ function App() {
                                                     setUseItn(true);
                                                 }
                                             }}
-                                            className="glass-select"
                                             title={t('app.model.placeholder')}
                                             aria-label={t('app.model.placeholder')}
                                             disabled={downloadedModels.length === 0}
@@ -761,12 +751,11 @@ function App() {
                                                         ))}
                                                 </>
                                             )}
-                                        </select>
+                                        </Select>
 
-                                        <select
+                                        <Select
                                             value={language}
                                             onChange={(e) => setLanguage(e.target.value)}
-                                            className="glass-select"
                                             title={model === "Paraformer-Online" || model === "Paraformer" ? t('app.model.locked') : t('app.model.selectLanguage')}
                                             aria-label={model === "Paraformer-Online" || model === "Paraformer" ? t('app.model.locked') : t('app.model.selectLanguage')}
                                         >
@@ -820,27 +809,27 @@ function App() {
                                                     <option value="vi">Vietnamese</option>
                                                 </>
                                             )}
-                                        </select>
+                                        </Select>
 
-                                        <button
-                                            onClick={() => setUseItn(!useItn)}
-                                            className={cn("glass-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500", useItn && "active")}
+                                        <Toggle
+                                            pressed={useItn}
+                                            onPressedChange={setUseItn}
                                             disabled={model === "Paraformer-Online"}
                                             title={model === "Paraformer-Online" ? "ITN not available in streaming mode" : "Toggle Inverse Text Normalization"}
                                             aria-label={model === "Paraformer-Online" ? "ITN not available in streaming mode" : "Toggle Inverse Text Normalization"}
                                         >
                                             <Settings2 className="w-4 h-4" />
                                             <span>ITN {useItn ? "On" : "Off"}</span>
-                                        </button>
+                                        </Toggle>
                                     </div>
                                 </motion.div>
-                            </div>
+                            </Card>
 
                             {/* Result Area */}
                             <AnimatePresence mode="wait">
                                 {(transcription || isProcessing) && (
-                                    <motion.div
-                                        className="result-card p-6"
+                                    <Card
+                                        className="p-6"
                                         initial={{ opacity: 0, y: 20, scale: 0.98 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: -10, scale: 0.98 }}
@@ -852,12 +841,15 @@ function App() {
                                             </span>
                                             <AnimatePresence mode="wait">
                                                 {transcription && (
-                                                    <motion.button
+                                                    <Button
                                                         key="copy-btn"
                                                         onClick={copyToClipboard}
-                                                        className="copy-button focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-lg"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="rounded-lg"
                                                         title={copied ? t('app.copied') : t('app.copy')}
                                                         aria-label={copied ? t('app.copied') : t('app.copy')}
+                                                        asMotion={true}
                                                         initial={{ opacity: 0, scale: 0.8 }}
                                                         animate={{ opacity: 1, scale: 1 }}
                                                         exit={{ opacity: 0, scale: 0.8 }}
@@ -885,7 +877,7 @@ function App() {
                                                                 </motion.div>
                                                             )}
                                                         </AnimatePresence>
-                                                    </motion.button>
+                                                    </Button>
                                                 )}
                                             </AnimatePresence>
                                         </div>
@@ -912,15 +904,15 @@ function App() {
                                                 )}
                                             </motion.p>
                                         )}
-                                    </motion.div>
+                                    </Card>
                                 )}
                             </AnimatePresence>
 
                             {/* Batch Processing Results */}
                             <AnimatePresence>
                                 {batchQueue.length > 0 && (
-                                    <motion.div
-                                        className="result-card p-6"
+                                    <Card
+                                        className="p-6"
                                         initial={{ opacity: 0, y: 20, scale: 0.98 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: -10, scale: 0.98 }}
@@ -939,26 +931,30 @@ function App() {
                                             <div className="flex items-center gap-2">
                                                 {batchQueue.some(i => i.status === 'complete') && (
                                                     <>
-                                                        <motion.button
+                                                        <Button
                                                             onClick={saveBatchResults}
-                                                            className="copy-button flex items-center justify-center w-8 h-8 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                                                            variant="ghost"
+                                                            size="icon"
                                                             title={t('batch.save')}
                                                             aria-label={t('batch.save')}
+                                                            asMotion={true}
                                                             whileHover={{ scale: 1.05 }}
                                                             whileTap={{ scale: 0.95 }}
                                                         >
                                                             <Download className="w-4 h-4" />
-                                                        </motion.button>
-                                                        <motion.button
+                                                        </Button>
+                                                        <Button
                                                             onClick={copyAllBatchResults}
-                                                            className="copy-button flex items-center justify-center w-8 h-8 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                                                            variant="ghost"
+                                                            size="icon"
                                                             title={t('batch.copyAll')}
                                                             aria-label={t('batch.copyAll')}
+                                                            asMotion={true}
                                                             whileHover={{ scale: 1.05 }}
                                                             whileTap={{ scale: 0.95 }}
                                                         >
                                                             {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                                                        </motion.button>
+                                                        </Button>
                                                     </>
                                                 )}
                                                 {!isBatchProcessing && (
@@ -1079,7 +1075,7 @@ function App() {
                                                 </motion.div>
                                             ))}
                                         </div>
-                                    </motion.div>
+                                    </Card>
                                 )}
                             </AnimatePresence>
                         </motion.main>

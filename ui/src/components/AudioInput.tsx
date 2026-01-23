@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Square, Upload, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { logger } from '../lib/logger';
+import { Button } from './ui/Button';
 
 interface AudioInputProps {
     onAudioReady: (file: Blob) => void;
@@ -258,10 +259,11 @@ export const AudioInput = memo(function AudioInput({
             <AnimatePresence>
                 {!isActive && !isProcessing && showUpload && (
                     <>
-                        <motion.button
-                            className="glass-upload cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                        <Button
+                            variant="glass"
                             aria-label={t('audioInput.upload')}
                             onClick={handleUploadClick}
+                            asMotion={true}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 10 }}
@@ -269,9 +271,9 @@ export const AudioInput = memo(function AudioInput({
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
                         >
-                            <Upload className="w-4 h-4" />
+                            <Upload className="w-4 h-4 mr-2" />
                             <span>{t('audioInput.upload')}</span>
-                        </motion.button>
+                        </Button>
                         <input
                             ref={fileInputRef}
                             type="file"
