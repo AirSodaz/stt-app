@@ -425,14 +425,12 @@ async def transcribe_audio(
         raise HTTPException(status_code=500, detail=str(e))
         
     finally:
-        # DEBUG: Keep temp files for inspection. Comment this block to re-enable cleanup.
-        logger.info(f"DEBUG: Keeping temp file for inspection: {temp_file_path}")
-        # if os.path.exists(temp_file_path):
-        #     try:
-        #         os.remove(temp_file_path)
-        #         logger.debug(f"Removed temp file: {temp_file_path}")
-        #     except OSError as e:
-        #         logger.warning(f"Failed to remove temp file {temp_file_path}: {e}")
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+                logger.debug(f"Removed temp file: {temp_file_path}")
+            except OSError as e:
+                logger.warning(f"Failed to remove temp file {temp_file_path}: {e}")
 
 @app.post("/transcribe_stream")
 async def transcribe_audio_stream(
