@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Moon, Sun, Laptop, Languages } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +33,12 @@ export function SettingsPage({
 }: SettingsPageProps) {
     const { theme, setTheme } = useTheme();
     const { t, i18n } = useTranslation();
+    const backButtonRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        // Focus the back button when settings page opens for keyboard accessibility
+        backButtonRef.current?.focus();
+    }, []);
 
     return (
         <motion.div
@@ -43,6 +50,7 @@ export function SettingsPage({
         >
             <div className="flex items-center gap-4 mb-2">
                 <button
+                    ref={backButtonRef}
                     onClick={onBack}
                     className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                     aria-label={t('settings.back')}
