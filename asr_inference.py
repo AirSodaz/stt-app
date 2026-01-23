@@ -54,6 +54,9 @@ SENSEVOICE_EMOJI_DICT = {
     "<|Event_UNK|>": "",
 }
 
+# Pre-sort emojis by length descending to handle multi-tag patterns first
+SORTED_SENSEVOICE_EMOJIS = sorted(SENSEVOICE_EMOJI_DICT.items(), key=lambda x: -len(x[0]))
+
 
 def sensevoice_postprocess(text: str, show_emoji: bool = True) -> str:
     """
@@ -72,7 +75,7 @@ def sensevoice_postprocess(text: str, show_emoji: bool = True) -> str:
     
     if show_emoji:
         # Replace tags with emojis (sorted by length to handle multi-tag patterns first)
-        for tag, emoji in sorted(SENSEVOICE_EMOJI_DICT.items(), key=lambda x: -len(x[0])):
+        for tag, emoji in SORTED_SENSEVOICE_EMOJIS:
             text = text.replace(tag, emoji)
     else:
         # Remove all tags without emojis
