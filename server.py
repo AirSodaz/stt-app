@@ -11,7 +11,7 @@ import json
 import asyncio
 import threading
 from typing import Dict, Any, List, Optional, Generator
-from asr_inference import ASRModelManager
+from asr_client import ASRClient
 
 # Configure logging
 from logger import setup_logging
@@ -20,15 +20,10 @@ from logger import setup_logging
 logger = setup_logging(__name__)
 
 
-# Initialize Model Manager
-try:
-    asr_model_manager = ASRModelManager()
-except Exception as e:
-    logger.critical(f"Failed to initialize ASRModelManager: {e}")
-    asr_model_manager = None
+# Global ASR Client
+asr_client: Optional[ASRClient] = None
 
 TEMP_DIR = "temp_uploads"
-
 
 # Download progress tracking
 download_progress: Dict[str, Dict[str, Any]] = {}
@@ -41,7 +36,6 @@ model_loading_state: Dict[str, Any] = {
     "loaded_model": None,
     "error": None
 }
-
 
 def update_download_progress(model_name: str, status: str, progress: int, message: str = "") -> None:
     """Update download progress for a model."""
@@ -58,6 +52,7 @@ def save_uploaded_file(file_obj, dest_path: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global asr_client
     # Startup: Ensure temp dir exists (and clean it first)
     if os.path.exists(TEMP_DIR):
         try:
@@ -74,13 +69,33 @@ async def lifespan(app: FastAPI):
     os.makedirs(TEMP_DIR, exist_ok=True)
     logger.info(f"Created temp directory: {TEMP_DIR}")
     
-    # Note: We no longer load the model at startup.
-    # Model loading is deferred until user requests transcription or explicitly loads a model.
-    # This ensures /models endpoint responds quickly.
-    logger.info("Startup: Model loading deferred. Server ready to accept requests.")
+    # Initialize ASR Client
+    # Only initialize if we are NOT in the worker process (which shouldn't happen here anyway as we are in server.py)
+    # But crucially, this code only runs when FastAPI starts, effectively guarding it.
+    try:
+        logger.info("Startup: Initializing ASR Client...")
+        asr_client = ASRClient()
+    except Exception as e:
+        logger.critical(f"Failed to initialize ASRClient: {e}")
+        asr_client = None
+    
+    logger.info("Startup: Server ready to accept requests.")
             
     yield
     
+    # Shutdown logic
+    logger.info("Shutdown: Stopping ASR Client...")
+    if asr_client:
+        # We should add a stop/shutdown method to ASRClient to be clean
+        # For now, just letting it be garbage collected or killed by OS might be okay,
+        # but explicit termination is better.
+        try:
+            if asr_client.worker_process and asr_client.worker_process.is_alive():
+                asr_client.worker_process.terminate()
+                asr_client.worker_process.join(timeout=2)
+        except Exception as e:
+            logger.error(f"Error shutting down ASRClient: {e}")
+
     # Shutdown: Clean up temp dir
     if os.path.exists(TEMP_DIR):
         try:
@@ -117,15 +132,15 @@ async def get_models() -> List[Dict[str, Any]]:
     """
     Get list of available ASR models with their download status.
     """
-    if asr_model_manager is None:
-        raise HTTPException(status_code=500, detail="ASR Manager not initialized.")
+    if asr_client is None:
+        raise HTTPException(status_code=500, detail="ASR Client not initialized.")
     
     models_status = []
-    for name in asr_model_manager.MODELS.keys():
+    for name in asr_client.MODELS.keys():
         models_status.append({
             "name": name,
-            "type": asr_model_manager.get_model_type(name),
-            "downloaded": asr_model_manager.is_model_downloaded(name)
+            "type": asr_client.get_model_type(name),
+            "downloaded": asr_client.is_model_downloaded(name)
         })
     return models_status
 
@@ -135,10 +150,11 @@ async def get_downloaded_models() -> List[str]:
     """
     Get list of downloaded model names only.
     """
-    if asr_model_manager is None:
-        raise HTTPException(status_code=500, detail="ASR Manager not initialized.")
+    if asr_client is None:
+         # Attempt lazy init if it failed during startup? No, that's unsafe.
+        raise HTTPException(status_code=500, detail="ASR Client not initialized.")
     
-    return asr_model_manager.get_downloaded_models()
+    return asr_client.get_downloaded_models()
 
 
 @app.get("/models/status")
@@ -166,27 +182,20 @@ async def load_model_endpoint(model_name: str = Form(...)) -> Dict[str, str]:
     Returns immediately while model loads in background.
     Use GET /models/status to check loading progress.
     """
-    if asr_model_manager is None:
-        raise HTTPException(status_code=500, detail="ASR Manager not initialized.")
+    if asr_client is None:
+        raise HTTPException(status_code=500, detail="ASR Client not initialized.")
     
-    if model_name not in asr_model_manager.MODELS:
+    if model_name not in asr_client.MODELS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
     
     # Check if model is downloaded
-    if not asr_model_manager.is_model_downloaded(model_name):
+    if not asr_client.is_model_downloaded(model_name):
         raise HTTPException(status_code=400, detail=f"Model not downloaded: {model_name}")
     
-    # Check if model is already loaded
-    if asr_model_manager.current_model_name == model_name and asr_model_manager.model is not None:
-        model_loading_state["loaded_model"] = model_name
-        model_loading_state["is_loading"] = False
-        model_loading_state["loading_model"] = None
-        model_loading_state["error"] = None
-        return {"status": "ready", "message": f"Model already loaded: {model_name}"}
-    
-    # Check if already loading this model
-    if model_loading_state["is_loading"] and model_loading_state["loading_model"] == model_name:
-        return {"status": "loading", "message": f"Model is loading: {model_name}"}
+    # Check if model is already loaded (and worker is alive)
+    # asr_client.load_model handles logic, but this quick check avoids thread spawn if possible.
+    # However, for interruption support, client.load_model is the source of truth.
+    # If we are effectively "switching", client.load_model does the work.
     
     # Start loading in background thread
     def load_model_background():
@@ -196,12 +205,26 @@ async def load_model_endpoint(model_name: str = Form(...)) -> Dict[str, str]:
             model_loading_state["error"] = None
             
             logger.info(f"Background loading model: {model_name}")
-            asr_model_manager.load_model(model_name)
+            # This call blocks until loaded (or interrupted/errored)
+            # It triggers the worker restart if needed.
+            asr_client.load_model(model_name)
             
+            # If successful (didn't raise exception)
             model_loading_state["loaded_model"] = model_name
             model_loading_state["is_loading"] = False
             model_loading_state["loading_model"] = None
             logger.info(f"Background loading complete: {model_name}")
+            
+        except RuntimeError as e:
+            # Check if it was an interruption or actual error?
+            # ASRClient raises RuntimeError("Load failed: ...") or "Worker restarted"
+            # If interrupted by another task, we might not want to show "Error" but just "Cancelled"?
+            # But here we are the thread that initiated it. If another thread interrupted us, 
+            # we failed to complete OUR task.
+            logger.error(f"Background loading failed for {model_name}: {e}")
+            model_loading_state["is_loading"] = False
+            model_loading_state["loading_model"] = None
+            model_loading_state["error"] = str(e)
         except Exception as e:
             logger.error(f"Background loading failed for {model_name}: {e}")
             model_loading_state["is_loading"] = False
@@ -215,74 +238,39 @@ async def load_model_endpoint(model_name: str = Form(...)) -> Dict[str, str]:
     return {"status": "loading", "message": f"Model loading started: {model_name}"}
 
 
-# Download output buffer for capturing tqdm progress
-download_output: Dict[str, List[str]] = {}
-
-
-class TqdmCapture:
-    """Capture stderr to get tqdm progress output for model.pt only."""
-    def __init__(self, model_name: str):
-        self.model_name = model_name
-        self.original_stderr = None
-        
-    def write(self, text):
-        # Write to original stderr too
-        if self.original_stderr:
-            self.original_stderr.write(text)
-            self.original_stderr.flush()
-        
-        # Only parse model.pt progress
-        if text.strip() and 'model.pt' in text:
-            self._parse_progress(text)
-    
-    def flush(self):
-        if self.original_stderr:
-            self.original_stderr.flush()
-    
-    def _parse_progress(self, text: str):
-        """Parse tqdm output for model.pt download progress."""
-        import re
-        
-        # Match: "Downloading [model.pt]: 45%|███| 402M/893M [00:15<00:18, 25.7MB/s]"
-        match = re.search(r'Downloading \[model\.pt\]:\s*(\d+)%.*?(\d+\.?\d*[kMG]?)/(\d+\.?\d*[kMG]?)', text)
-        if match:
-            percent = int(match.group(1))
-            downloaded = match.group(2)
-            total = match.group(3)
-            update_download_progress(
-                self.model_name,
-                "downloading",
-                percent,
-                f"Downloading model.pt... {percent}% ({downloaded}/{total})"
-            )
-
+def parse_progress_text(model_name: str, text: str):
+    """Parse tqdm output and update progress"""
+    import re
+    # Match: "Downloading [model.pt]: 45%|███| 402M/893M [00:15<00:18, 25.7MB/s]"
+    match = re.search(r'Downloading \[model\.pt\]:\s*(\d+)%.*?(\d+\.?\d*[kMG]?)/(\d+\.?\d*[kMG]?)', text)
+    if match:
+        percent = int(match.group(1))
+        downloaded = match.group(2)
+        total = match.group(3)
+        update_download_progress(
+            model_name,
+            "downloading",
+            percent,
+            f"Downloading model.pt... {percent}% ({downloaded}/{total})"
+        )
 
 def run_download_with_progress(model_name: str) -> None:
-    """Run model download in background, capturing tqdm progress output."""
-    import sys
-    import time
-    
+    """Run model download in background, capturing progress via callback."""
+    if asr_client is None:
+         return
+
     try:
         update_download_progress(model_name, "downloading", 0, "Initializing download...")
         
-        # Create stderr capturer
-        capturer = TqdmCapture(model_name)
-        capturer.original_stderr = sys.stderr
+        def progress_callback(text):
+             parse_progress_text(model_name, text)
+
+        # Run the download
+        asr_client.download_model(model_name, progress_callback=progress_callback)
         
-        # Replace stderr to capture tqdm output
-        sys.stderr = capturer
-        
-        try:
-            # Run the download
-            asr_model_manager.download_model(model_name)
-            
-            # Complete
-            update_download_progress(model_name, "complete", 100, "Download complete!")
-            logger.info(f"Model '{model_name}' downloaded successfully.")
-            
-        finally:
-            # Restore stderr
-            sys.stderr = capturer.original_stderr
+        # Complete
+        update_download_progress(model_name, "complete", 100, "Download complete!")
+        logger.info(f"Model '{model_name}' downloaded successfully.")
         
     except Exception as e:
         logger.error(f"Download failed for {model_name}: {e}")
@@ -320,10 +308,10 @@ async def download_model_with_progress(model_name: str):
     """
     Start model download and stream progress via SSE.
     """
-    if asr_model_manager is None:
-        raise HTTPException(status_code=500, detail="ASR Manager not initialized.")
+    if asr_client is None:
+        raise HTTPException(status_code=500, detail="ASR Client not initialized.")
     
-    if model_name not in asr_model_manager.MODELS:
+    if model_name not in asr_client.MODELS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
     
     # Check if already downloading
@@ -351,14 +339,14 @@ async def download_model(model_name: str = Form(...)) -> Dict[str, str]:
     """
     Trigger download of a specific model (legacy endpoint, sync).
     """
-    if asr_model_manager is None:
-        raise HTTPException(status_code=500, detail="ASR Manager not initialized.")
+    if asr_client is None:
+        raise HTTPException(status_code=500, detail="ASR Client not initialized.")
     
-    if model_name not in asr_model_manager.MODELS:
+    if model_name not in asr_client.MODELS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
 
     try:
-        asr_model_manager.download_model(model_name)
+        asr_client.download_model(model_name)
         return {"status": "success", "message": f"Model '{model_name}' downloaded successfully."}
     except Exception as e:
         logger.error(f"Download failed for {model_name}: {e}")
@@ -387,8 +375,8 @@ async def transcribe_audio(
     Raises:
         HTTPException: If model is not loaded or transcription fails.
     """
-    if asr_model_manager is None:
-        logger.error("ASR Model Manager is not initialized.")
+    if asr_client is None:
+        logger.error("ASR Client is not initialized.")
         raise HTTPException(status_code=500, detail="Speech-to-text model manager not initialized.")
 
     # Save uploaded file
@@ -410,8 +398,9 @@ async def transcribe_audio(
         logger.info(f"Transcribing {temp_file_path} with language={language}, use_itn={use_itn}, model={model}, show_emoji={show_emoji}")
         
         # Run inference in a separate thread to avoid blocking the event loop
+        # asr_client.transcribe handles thread-safety and interruption internally.
         text = await asyncio.to_thread(
-            asr_model_manager.transcribe,
+            asr_client.transcribe,
             temp_file_path, 
             language=language, 
             use_itn=use_itn, 
@@ -448,8 +437,8 @@ async def transcribe_audio_stream(
     Transcribe an uploaded audio file with SSE progress updates.
     This endpoint sends heartbeat messages during processing to prevent timeout.
     """
-    if asr_model_manager is None:
-        logger.error("ASR Model Manager is not initialized.")
+    if asr_client is None:
+        logger.error("ASR Client is not initialized.")
         raise HTTPException(status_code=500, detail="Speech-to-text model manager not initialized.")
 
     # Save uploaded file
@@ -480,7 +469,7 @@ async def transcribe_audio_stream(
         """Run transcription in background thread."""
         try:
             logger.info(f"[SSE] Starting transcription with model={model}")
-            text = asr_model_manager.transcribe(
+            text = asr_client.transcribe(
                 temp_file_path,
                 language=language,
                 use_itn=use_itn,
@@ -551,17 +540,19 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
     
     # Determine which streaming model to use
     streaming_model = None
-    if model and model in asr_model_manager.MODELS:
+    # Determine which streaming model to use
+    streaming_model = None
+    if model and model in asr_client.MODELS:
         # Validate it's an online model
-        if asr_model_manager.get_model_type(model) == "online":
+        if asr_client.get_model_type(model) == "online":
             streaming_model = model
         else:
             logger.warning(f"Requested model '{model}' is not a streaming model, falling back to default")
     
     # Fallback: find first available online model
     if not streaming_model:
-        for name in asr_model_manager.MODELS.keys():
-            if asr_model_manager.get_model_type(name) == "online":
+        for name in asr_client.MODELS.keys():
+            if asr_client.get_model_type(name) == "online":
                 streaming_model = name
                 break
     
@@ -608,7 +599,7 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
                    try:
                        # Final chunk
                        res = await asyncio.to_thread(
-                           asr_model_manager.inference_chunk,
+                           asr_client.inference_chunk,
                            audio_data, 
                            cache=cache,
                            is_final=True,
@@ -648,7 +639,7 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
                 
                 try:
                     res = await asyncio.to_thread(
-                        asr_model_manager.inference_chunk,
+                        asr_client.inference_chunk,
                         audio_data,
                         cache=cache,
                         is_final=False,

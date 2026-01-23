@@ -413,10 +413,9 @@ class ASRModelManager:
             ctc_conf=dict(config.get("ctc_conf", {})),
             trust_remote_code=False,
             device=self.device,
-            punc_model="ct-punc",
-            # VAD is required for punctuation to work in streaming
-            vad_model="fsmn-vad",
-            vad_kwargs={"max_single_segment_time": 60000},
+            punc_model="iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727-onnx",
+            vad_model="iic/speech_fsmn_vad_zh-cn-16k-common-onnx",
+            vad_kwargs={"max_single_segment_time": 30000},
             disable_update=True,
         )
 
