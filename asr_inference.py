@@ -53,8 +53,11 @@ SENSEVOICE_EMOJI_DICT = {
     "<|Event_UNK|>": "",
 }
 
-# Pre-sort emojis by length descending to handle multi-tag patterns first
-SORTED_SENSEVOICE_EMOJIS = sorted(SENSEVOICE_EMOJI_DICT.items(), key=lambda x: -len(x[0]))
+# Sort keys by length descending to handle multi-tag patterns first
+sorted_tags = sorted(SENSEVOICE_EMOJI_DICT.keys(), key=lambda k: -len(k))
+
+# Create a single regex for all tags. This is more efficient than iterating.
+SENSEVOICE_TAG_PATTERN = re.compile("|".join(re.escape(tag) for tag in sorted_tags))
 
 
 def sensevoice_postprocess(text: str, show_emoji: bool = True) -> str:
@@ -72,15 +75,16 @@ def sensevoice_postprocess(text: str, show_emoji: bool = True) -> str:
     # First normalize tags with spaces: "< | zh | >" -> "<|zh|>"
     text = re.sub(r'<\s*\|\s*([^|]*?)\s*\|\s*>', lambda m: f'<|{m.group(1).strip()}|>', text)
     
-    if show_emoji:
-        # Replace tags with emojis (sorted by length to handle multi-tag patterns first)
-        for tag, emoji in SORTED_SENSEVOICE_EMOJIS:
-            text = text.replace(tag, emoji)
-    else:
-        # Remove all tags without emojis
-        for tag in SENSEVOICE_EMOJI_DICT.keys():
-            text = text.replace(tag, "")
-    
+    def replace_tag(match):
+        """Replacer function for re.sub."""
+        tag = match.group(0)
+        if show_emoji:
+            return SENSEVOICE_EMOJI_DICT.get(tag, "")
+        return "" # If not showing emoji, remove all known tags
+
+    # Use the pre-compiled regex to replace all known tags in one pass
+    text = SENSEVOICE_TAG_PATTERN.sub(replace_tag, text)
+
     # Remove any remaining unrecognized tags
     text = re.sub(r'<\|[^|]*\|>', '', text)
     
