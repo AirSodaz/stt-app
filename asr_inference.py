@@ -605,12 +605,6 @@ class ASRModelManager:
         if self.model is None:
             raise RuntimeError("No model loaded.")
             
-        if target_model != "Paraformer":
-             # For now, only Paraformer is verified for detailed streaming here
-             # But Fun-ASR-Nano might work if supported.
-             # raising warning or passing through
-             pass
-
         # Acquire lock for thread-safe inference
         with self.lock:
             try:
@@ -628,19 +622,57 @@ class ASRModelManager:
                 else:
                     audio_data = audio_chunk
                 
-                generate_kwargs = {
-                    "input": audio_data,
-                    "cache": cache if cache is not None else {},
-                    "is_final": is_final,
-                    # "chunk_size": [0, 10, 5], # Removed to avoid conflict with VAD
-                    "encoder_chunk_look_back": 4,
-                    "decoder_chunk_look_back": 1,
-                }
+                # Streaming Config
+                # [0, 10, 5] means 600ms chunk size, 300ms lookahead
+                # 10 frames * 60ms = 600ms
+                CHUNK_SIZE_CONF = [0, 10, 5]
+                SAMPLE_RATE = 16000
+                CHUNK_MS = 600
+                # 600ms * 16 samples/ms = 9600 samples
+                CHUNK_SAMPLES = int(SAMPLE_RATE * (CHUNK_MS / 1000))
 
-                logger.debug(f"[Streaming] Calling generate with is_final={is_final}")
-                res = self.model.generate(**generate_kwargs)
-                logger.debug(f"[Streaming] Result: {res}")
-                return res
+                total_samples = len(audio_data)
+
+                # If empty (EOF signal sometimes), just return
+                if total_samples == 0:
+                     return self.model.generate(
+                        input=audio_data,
+                        cache=cache if cache is not None else {},
+                        is_final=is_final,
+                        chunk_size=CHUNK_SIZE_CONF,
+                        encoder_chunk_look_back=4,
+                        decoder_chunk_look_back=1
+                     )
+
+                results_text = []
+
+                # Loop and slice input into 600ms chunks to match model streaming config
+                for i in range(0, total_samples, CHUNK_SAMPLES):
+                    end_idx = min(i + CHUNK_SAMPLES, total_samples)
+                    sub_chunk = audio_data[i:end_idx]
+
+                    # Determine is_final for THIS sub-chunk
+                    sub_is_final = is_final and (end_idx == total_samples)
+
+                    logger.debug(f"[Streaming] Processing sub-chunk {i}:{end_idx}, is_final={sub_is_final}")
+
+                    res = self.model.generate(
+                        input=sub_chunk,
+                        cache=cache if cache is not None else {},
+                        is_final=sub_is_final,
+                        chunk_size=CHUNK_SIZE_CONF,
+                        encoder_chunk_look_back=4,
+                        decoder_chunk_look_back=1
+                    )
+
+                    if isinstance(res, list) and len(res) > 0:
+                        text = res[0].get("text", "")
+                        if text:
+                            results_text.append(text)
+
+                combined_text = "".join(results_text)
+                logger.debug(f"[Streaming] Combined result: '{combined_text}'")
+                return [{"text": combined_text}]
                 
             except Exception as e:
                  logger.error(f"Error during streaming inference: {e}")
