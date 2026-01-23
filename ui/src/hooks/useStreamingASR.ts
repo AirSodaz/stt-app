@@ -1,11 +1,19 @@
 import { useState, useRef, useCallback } from 'react';
 import { logger } from '../lib/logger';
 
+interface UseStreamingASROptions {
+    onPartialResult: (text: string, isFinal: boolean) => void;
+    modelName?: string;
+}
+
 /**
  * Hook for streaming ASR via WebSocket.
  * Sends raw PCM Int16 audio at 16kHz.
+ * 
+ * @param options.onPartialResult - Callback for partial transcription results
+ * @param options.modelName - Optional model name for streaming (default: server's default online model)
  */
-export function useStreamingASR(onPartialResult: (text: string, isFinal: boolean) => void) {
+export function useStreamingASR({ onPartialResult, modelName }: UseStreamingASROptions) {
     const [isStreaming, setIsStreaming] = useState(false);
     const wsRef = useRef<WebSocket | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -44,8 +52,11 @@ export function useStreamingASR(onPartialResult: (text: string, isFinal: boolean
             processorRef.current = processor;
             logger.debug('[Streaming] AudioContext ready');
 
-            // 3. Connect WebSocket
-            const ws = new WebSocket('ws://127.0.0.1:8000/ws/transcribe');
+            // 3. Connect WebSocket with model parameter if specified
+            const wsUrl = modelName
+                ? `ws://127.0.0.1:8000/ws/transcribe?model=${encodeURIComponent(modelName)}`
+                : 'ws://127.0.0.1:8000/ws/transcribe';
+            const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 
             ws.onopen = () => {
@@ -118,7 +129,7 @@ export function useStreamingASR(onPartialResult: (text: string, isFinal: boolean
             logger.error('[Streaming] Failed to start:', err);
             setIsStreaming(false);
         }
-    }, [onPartialResult]);
+    }, [onPartialResult, modelName]);
 
     const stopStreaming = useCallback(() => {
         logger.debug('[Streaming] Stopping...');

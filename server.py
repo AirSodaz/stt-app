@@ -28,27 +28,6 @@ except Exception as e:
     asr_model_manager = None
 
 TEMP_DIR = "temp_uploads"
-PREFERENCE_FILE = "user_preferences.json"
-
-
-def load_preferences() -> Dict[str, Any]:
-    """Load user preferences from file."""
-    if os.path.exists(PREFERENCE_FILE):
-        try:
-            with open(PREFERENCE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.warning(f"Failed to load preferences: {e}")
-    return {}
-
-
-def save_preferences(prefs: Dict[str, Any]) -> None:
-    """Save user preferences to file."""
-    try:
-        with open(PREFERENCE_FILE, "w", encoding="utf-8") as f:
-            json.dump(prefs, f, indent=2)
-    except Exception as e:
-        logger.error(f"Failed to save preferences: {e}")
 
 
 # Download progress tracking
@@ -175,29 +154,10 @@ async def get_model_status() -> Dict[str, Any]:
     }
 
 
-@app.get("/preference/model")
-async def get_model_preference() -> Dict[str, Optional[str]]:
+@app.post("/load_model")
+async def load_model_endpoint(model_name: str = Form(...)) -> Dict[str, str]:
     """
-    Get the user's saved model preference.
-    Returns null if no preference or if the saved model is not downloaded.
-    """
-    if asr_model_manager is None:
-        raise HTTPException(status_code=500, detail="ASR Manager not initialized.")
-    
-    prefs = load_preferences()
-    saved_model = prefs.get("selected_model")
-    
-    # Validate that the saved model is actually downloaded
-    if saved_model and asr_model_manager.is_model_downloaded(saved_model):
-        return {"model": saved_model}
-    
-    return {"model": None}
-
-
-@app.post("/preference/model")
-async def set_model_preference(model_name: str = Form(...)) -> Dict[str, str]:
-    """
-    Save the user's model preference and trigger background loading.
+    Trigger background loading of a model.
     Returns immediately while model loads in background.
     Use GET /models/status to check loading progress.
     """
@@ -210,11 +170,6 @@ async def set_model_preference(model_name: str = Form(...)) -> Dict[str, str]:
     # Check if model is downloaded
     if not asr_model_manager.is_model_downloaded(model_name):
         raise HTTPException(status_code=400, detail=f"Model not downloaded: {model_name}")
-    
-    # Save preference
-    prefs = load_preferences()
-    prefs["selected_model"] = model_name
-    save_preferences(prefs)
     
     # Check if model is already loaded
     if asr_model_manager.current_model_name == model_name and asr_model_manager.model is not None:
@@ -579,21 +534,48 @@ async def transcribe_audio_stream(
 
 
 @app.websocket("/ws/transcribe")
-async def websocket_transcribe(websocket: WebSocket):
+async def websocket_transcribe(websocket: WebSocket, model: str = None):
     """
     WebSocket endpoint for real-time transcription.
     Processes audio in segments for near real-time output.
+    
+    Query Parameters:
+        model (str): Optional model name for streaming. Defaults to first available online model.
     """
-    logger.info("WS connection attempt...")
+    logger.info(f"WS connection attempt with model={model}...")
     await websocket.accept()
     logger.info("WS accepted")
     
     import numpy as np
     
+    # Determine which streaming model to use
+    streaming_model = None
+    if model and model in asr_model_manager.MODELS:
+        # Validate it's an online model
+        if asr_model_manager.get_model_type(model) == "online":
+            streaming_model = model
+        else:
+            logger.warning(f"Requested model '{model}' is not a streaming model, falling back to default")
+    
+    # Fallback: find first available online model
+    if not streaming_model:
+        for name in asr_model_manager.MODELS.keys():
+            if asr_model_manager.get_model_type(name) == "online":
+                streaming_model = name
+                break
+    
+    if not streaming_model:
+        logger.error("No online streaming model available")
+        await websocket.send_json({"error": "No streaming model available"})
+        await websocket.close()
+        return
+    
+    logger.info(f"[WS] Using streaming model: {streaming_model}")
+    
     # Accumulate audio chunks
     audio_buffer = bytearray()
     SAMPLE_RATE = 16000
-    # Paraformer streaming chunk size is typically 600ms (10 * 60ms)
+    # Streaming chunk size is typically 600ms (10 * 60ms)
     # We set a slightly larger buffer to ensure we have enough data
     SEGMENT_DURATION = 1.2 
     SEGMENT_SAMPLES = int(SAMPLE_RATE * SEGMENT_DURATION * 2)  # *2 for int16 bytes
@@ -628,7 +610,7 @@ async def websocket_transcribe(websocket: WebSocket):
                            audio_data, 
                            cache=cache,
                            is_final=True,
-                           model_name="Paraformer"
+                           model_name=streaming_model
                        )
                        text = process_result(res)
                        if text:
@@ -659,7 +641,7 @@ async def websocket_transcribe(websocket: WebSocket):
                         audio_data,
                         cache=cache,
                         is_final=False,
-                        model_name="Paraformer"
+                        model_name=streaming_model
                     )
                     text = process_result(res)
                     if text:

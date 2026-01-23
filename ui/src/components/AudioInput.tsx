@@ -14,6 +14,7 @@ interface AudioInputProps {
     onStartStreaming?: () => void;
     onStopStreaming?: () => void;
     showUpload?: boolean;
+    isModelReady?: boolean;
 }
 
 export function AudioInput({
@@ -24,7 +25,8 @@ export function AudioInput({
     isStreaming = false,
     onStartStreaming,
     onStopStreaming,
-    showUpload = true
+    showUpload = true,
+    isModelReady = true
 }: AudioInputProps) {
     const { t } = useTranslation();
     const [isRecording, setIsRecording] = useState(false);
@@ -171,7 +173,7 @@ export function AudioInput({
             <div className="relative">
                 <motion.button
                     onClick={isActive ? stopRecording : startRecording}
-                    disabled={isProcessing && !isActive}
+                    disabled={(isProcessing && !isActive) || !isModelReady}
                     aria-label={isActive ? t('audioInput.tapToStop') : t('audioInput.tapToSpeak')}
                     className={cn(
                         "relative flex items-center justify-center w-28 h-28 rounded-full transition-colors duration-300",
@@ -179,10 +181,10 @@ export function AudioInput({
                         isActive
                             ? "bg-linear-to-br from-red-900/80 to-red-950/80 border-red-500/50"
                             : "bg-linear-to-br from-slate-900/80 to-slate-950/80 border-white/10 hover:border-cyan-500/50",
-                        isProcessing && !isActive && "opacity-70 cursor-not-allowed"
+                        ((isProcessing && !isActive) || !isModelReady) && "opacity-70 cursor-not-allowed"
                     )}
-                    whileHover={{ scale: isProcessing && !isActive ? 1 : 1.05 }}
-                    whileTap={{ scale: isProcessing && !isActive ? 1 : 0.95 }}
+                    whileHover={{ scale: (isProcessing && !isActive) || !isModelReady ? 1 : 1.05 }}
+                    whileTap={{ scale: (isProcessing && !isActive) || !isModelReady ? 1 : 0.95 }}
                 >
                     <AnimatePresence mode="wait">
                         {isActive ? (

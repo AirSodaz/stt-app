@@ -81,8 +81,11 @@ function App() {
         }
     }, []);
 
-    // Initialize streaming hook
-    const { isStreaming, startStreaming, stopStreaming } = useStreamingASR(handlePartialResult);
+    // Initialize streaming hook with current model (for realtime mode, model should be an online-type model)
+    const { isStreaming, startStreaming, stopStreaming } = useStreamingASR({
+        onPartialResult: handlePartialResult,
+        modelName: model ?? undefined
+    });
 
 
     const fetchModels = useCallback(async (retryCount = 0) => {
@@ -121,36 +124,14 @@ function App() {
         }
     }, []);
 
-    const loadModelPreference = useCallback(async () => {
-        try {
-            const res = await axios.get("http://127.0.0.1:8000/preference/model");
-            if (res.data?.model) {
-                setModel(res.data.model);
-                // Check if this model is already loaded
-                const statusRes = await axios.get("http://127.0.0.1:8000/models/status");
-                if (statusRes.data?.loaded_model === res.data.model) {
-                    setModelLoadingStatus('ready');
-                } else if (statusRes.data?.is_loading && statusRes.data?.loading_model === res.data.model) {
-                    setModelLoadingStatus('loading');
-                    // Start polling for completion
-                    pollModelStatus(res.data.model);
-                } else {
-                    setModelLoadingStatus('idle');
-                }
-            }
-        } catch (err) {
-            logger.error("Failed to load model preference:", err);
-        }
-    }, []);
-
-    const saveModelPreference = useCallback(async (modelName: string) => {
+    const loadModel = useCallback(async (modelName: string) => {
         try {
             const formData = new FormData();
             formData.append("model_name", modelName);
-            const res = await axios.post("http://127.0.0.1:8000/preference/model", formData);
+            const res = await axios.post("http://127.0.0.1:8000/load_model", formData);
             return res.data;
         } catch (err) {
-            logger.error("Failed to save model preference:", err);
+            logger.error("Failed to load model:", err);
             return null;
         }
     }, []);
@@ -194,27 +175,9 @@ function App() {
     }, []);
 
     useEffect(() => {
-        const init = async () => {
-            // Start fetching models (with retry)
-            // Once connected, load request preference
-            const success = await fetchModels();
-            if (success) {
-                await loadModelPreference();
-            } else {
-                // If fetchModels returns true immediately (which it won't due to async/recursive nature),
-                // we might miss this. 
-                // However, fetchModels is recursive via setTimeout, so we can't await the whole chain easily here.
-                // Better approach: Just kick off fetchModels, and let loadModelPreference run independently 
-                // or check serverStatus. But loadModelPreference also needs server.
-
-                // Let's just try loading preference anyway, it might fail if server down, which is fine.
-                // Or better, only load preference if we suspect server is up. 
-                // But simplified: Just run init in parallel.
-                loadModelPreference();
-            }
-        };
-        init();
-    }, [fetchModels, loadModelPreference]);
+        // Start fetching models (with retry)
+        fetchModels();
+    }, [fetchModels]);
 
     useEffect(() => {
         // Polling to keep model status fresh (e.g. if external download)
@@ -242,7 +205,7 @@ function App() {
         setModel(newModel);
         setModelLoadingStatus('loading');
 
-        const result = await saveModelPreference(newModel);
+        const result = await loadModel(newModel);
 
         if (result?.status === 'ready') {
             // Model was already loaded
@@ -274,8 +237,6 @@ function App() {
                     if (data.status === "complete") {
                         eventSource.close();
                         fetchModels();
-                        setModel(modelName);
-                        saveModelPreference(modelName);
                         setIsDownloading(null);
                         setDownloadProgress(0);
                         setDownloadMessage("");
@@ -702,6 +663,7 @@ function App() {
                                     isStreamingMode={activeTab === 'realtime'}
                                     isStreaming={isStreaming}
                                     showUpload={activeTab === 'offline'}
+                                    isModelReady={!!model && modelLoadingStatus === 'ready'}
                                     onStartStreaming={() => {
                                         setTranscription("");
                                         setIsProcessing(true);
