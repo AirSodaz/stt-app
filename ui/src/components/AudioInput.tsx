@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Square, Upload, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { logger } from '../lib/logger';
+import { Button } from './ui/Button';
 
 interface AudioInputProps {
     onAudioReady: (file: Blob) => void;
@@ -178,7 +179,7 @@ export const AudioInput = memo(function AudioInput({
                     aria-label={isActive ? t('audioInput.tapToStop') : t('audioInput.tapToSpeak')}
                     className={cn(
                         "relative flex items-center justify-center w-28 h-28 rounded-full transition-colors duration-300",
-                        "border-2 shadow-2xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-cyan-500/50",
+                        "border-2 shadow-2xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-cyan-500/50 cursor-pointer",
                         isActive
                             ? "bg-linear-to-br from-red-900/80 to-red-950/80 border-red-500/50"
                             : "bg-linear-to-br from-slate-900/80 to-slate-950/80 border-white/10 hover:border-cyan-500/50",
@@ -258,20 +259,18 @@ export const AudioInput = memo(function AudioInput({
             <AnimatePresence>
                 {!isActive && !isProcessing && showUpload && (
                     <>
-                        <motion.button
-                            className="glass-upload cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                        <Button
+                            variant="glass"
                             aria-label={t('audioInput.upload')}
                             onClick={handleUploadClick}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 10 }}
                             transition={{ duration: 0.3, delay: 0.1 }}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
                         >
-                            <Upload className="w-4 h-4" />
+                            <Upload className="w-4 h-4 mr-2" />
                             <span>{t('audioInput.upload')}</span>
-                        </motion.button>
+                        </Button>
                         <input
                             ref={fileInputRef}
                             type="file"
