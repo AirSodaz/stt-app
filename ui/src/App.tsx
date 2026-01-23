@@ -1,16 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { AudioInput } from './components/AudioInput';
 import { Bot, Copy, Check, Settings2, Settings, FileAudio, Radio, Trash2, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import { cn } from './lib/utils';
-import { SettingsPage } from './components/SettingsPage';
 import { useStreamingASR } from './hooks/useStreamingASR';
 import { logger } from './lib/logger';
-import { SaveOptionsModal } from './components/SaveOptionsModal';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
+
+// Lazy load heavy components
+const SettingsPage = lazy(() => import('./components/SettingsPage').then(module => ({ default: module.SettingsPage })));
+const SaveOptionsModal = lazy(() => import('./components/SaveOptionsModal').then(module => ({ default: module.SaveOptionsModal })));
 
 function App() {
     const { t } = useTranslation();
@@ -654,17 +656,23 @@ function App() {
                 {/* Main Card */}
                 <AnimatePresence mode="wait">
                     {showSettings ? (
-                        <SettingsPage
-                            key="settings"
-                            availableModels={availableModels}
-                            isDownloading={isDownloading}
-                            downloadProgress={downloadProgress}
-                            downloadMessage={downloadMessage}
-                            onDownload={handleDownloadModel}
-                            onBack={() => setShowSettings(false)}
-                            isLoadingModels={isLoadingModels}
-                            serverStatus={serverStatus}
-                        />
+                        <Suspense fallback={
+                            <div className="flex justify-center items-center h-64">
+                                <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                        }>
+                            <SettingsPage
+                                key="settings"
+                                availableModels={availableModels}
+                                isDownloading={isDownloading}
+                                downloadProgress={downloadProgress}
+                                downloadMessage={downloadMessage}
+                                onDownload={handleDownloadModel}
+                                onBack={() => setShowSettings(false)}
+                                isLoadingModels={isLoadingModels}
+                                serverStatus={serverStatus}
+                            />
+                        </Suspense>
                     ) : (
                         <motion.main
                             key="main"
@@ -1110,11 +1118,13 @@ function App() {
                 </motion.footer>
             </div>
 
-            <SaveOptionsModal
-                isOpen={showSaveModal}
-                onClose={() => setShowSaveModal(false)}
-                onConfirm={handleSaveConfirm}
-            />
+            <Suspense fallback={null}>
+                <SaveOptionsModal
+                    isOpen={showSaveModal}
+                    onClose={() => setShowSaveModal(false)}
+                    onConfirm={handleSaveConfirm}
+                />
+            </Suspense>
         </div >
     );
 }
