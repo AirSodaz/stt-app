@@ -15,19 +15,55 @@ export const SaveOptionsModal = ({ isOpen, onClose, onConfirm }: SaveOptionsModa
     const [mode, setMode] = useState<'merge' | 'separate'>('merge');
     const [path, setPath] = useState<string>('');
     const closeButtonRef = useRef<HTMLButtonElement>(null);
+    const modalRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (isOpen) {
             const previousFocus = document.activeElement as HTMLElement;
+
+            const handleKeyDown = (e: KeyboardEvent) => {
+                if (e.key === 'Escape') {
+                    onClose();
+                    return;
+                }
+
+                if (e.key === 'Tab' && modalRef.current) {
+                    const focusableElements = modalRef.current.querySelectorAll(
+                        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                    );
+
+                    if (focusableElements.length === 0) return;
+
+                    const firstElement = focusableElements[0] as HTMLElement;
+                    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+                    if (e.shiftKey) {
+                        if (document.activeElement === firstElement) {
+                            e.preventDefault();
+                            lastElement.focus();
+                        }
+                    } else {
+                        if (document.activeElement === lastElement) {
+                            e.preventDefault();
+                            firstElement.focus();
+                        }
+                    }
+                }
+            };
+
+            document.addEventListener('keydown', handleKeyDown);
+
             // Delay focus slightly to ensure modal is rendered
             requestAnimationFrame(() => {
                 closeButtonRef.current?.focus();
             });
+
             return () => {
+                document.removeEventListener('keydown', handleKeyDown);
                 previousFocus?.focus();
             };
         }
-    }, [isOpen]);
+    }, [isOpen, onClose]);
 
     const handleBrowse = async () => {
         try {
@@ -67,6 +103,7 @@ export const SaveOptionsModal = ({ isOpen, onClose, onConfirm }: SaveOptionsModa
                     {/* Modal */}
                     <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
                         <motion.div
+                            ref={modalRef}
                             role="dialog"
                             aria-modal="true"
                             aria-labelledby="save-modal-title"
