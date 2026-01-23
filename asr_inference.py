@@ -612,10 +612,10 @@ class ASRModelManager:
                     audio_data = np.frombuffer(audio_chunk, dtype=np.int16)
                     # Normalize to float32 [-1, 1] as expected by the model
                     audio_data = audio_data.astype(np.float32) / 32768.0
-                    logger.info(f"[Streaming] Received {len(audio_chunk)} bytes -> {len(audio_data)} samples")
+                    logger.debug(f"[Streaming] Received {len(audio_chunk)} bytes -> {len(audio_data)} samples")
                 elif isinstance(audio_chunk, bytes) and len(audio_chunk) == 0:
                     audio_data = np.array([], dtype=np.float32)
-                    logger.info("[Streaming] Received EOF (empty bytes)")
+                    logger.debug("[Streaming] Received EOF (empty bytes)")
                 else:
                     audio_data = audio_chunk
                 
@@ -628,9 +628,9 @@ class ASRModelManager:
                     "decoder_chunk_look_back": 1,
                 }
 
-                logger.info(f"[Streaming] Calling generate with is_final={is_final}")
+                logger.debug(f"[Streaming] Calling generate with is_final={is_final}")
                 res = self.model.generate(**generate_kwargs)
-                logger.info(f"[Streaming] Result: {res}")
+                logger.debug(f"[Streaming] Result: {res}")
                 return res
                 
             except Exception as e:
