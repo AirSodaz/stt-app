@@ -44,7 +44,7 @@ export function SettingsPage({
             <div className="flex items-center gap-4 mb-2">
                 <button
                     onClick={onBack}
-                    className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-secondary hover:text-primary"
+                    className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                     aria-label={t('settings.back')}
                 >
                     <ArrowLeft className="w-5 h-5" />
@@ -61,7 +61,7 @@ export function SettingsPage({
                     <button
                         onClick={() => i18n.changeLanguage('zh')}
                         className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium",
+                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
                             i18n.language.startsWith('zh')
                                 ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
                                 : "text-secondary hover:text-primary"
@@ -73,7 +73,7 @@ export function SettingsPage({
                     <button
                         onClick={() => i18n.changeLanguage('en')}
                         className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium",
+                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
                             i18n.language.startsWith('en')
                                 ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
                                 : "text-secondary hover:text-primary"
@@ -94,7 +94,7 @@ export function SettingsPage({
                     <button
                         onClick={() => setTheme('light')}
                         className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium",
+                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
                             theme === 'light'
                                 ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
                                 : "text-secondary hover:text-primary"
@@ -106,7 +106,7 @@ export function SettingsPage({
                     <button
                         onClick={() => setTheme('dark')}
                         className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium",
+                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
                             theme === 'dark'
                                 ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
                                 : "text-secondary hover:text-primary"
@@ -118,7 +118,7 @@ export function SettingsPage({
                     <button
                         onClick={() => setTheme('auto')}
                         className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium",
+                            "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
                             theme === 'auto'
                                 ? "bg-white dark:bg-white/10 shadow-sm text-cyan-600 dark:text-cyan-400"
                                 : "text-secondary hover:text-primary"
@@ -176,7 +176,7 @@ export function SettingsPage({
                                         <button
                                             onClick={() => onDownload(m.name)}
                                             disabled={isDownloading !== null}
-                                            className="text-xs px-3 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-700 dark:bg-cyan-600/60 dark:hover:bg-cyan-500/80 dark:text-white transition-colors disabled:opacity-50"
+                                            className="text-xs px-3 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-700 dark:bg-cyan-600/60 dark:hover:bg-cyan-500/80 dark:text-white transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                                         >
                                             {t('settings.download')}
                                         </button>

@@ -602,7 +602,7 @@ function App() {
                     {!showSettings && (
                         <button
                             onClick={() => setShowSettings(true)}
-                            className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-slate-700 hover:text-slate-900 dark:text-white/80 dark:hover:text-white"
+                            className="p-2 rounded-xl bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-slate-700 hover:text-slate-900 dark:text-white/80 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                             title={t('app.settings')}
                             aria-label={t('app.settings')}
                         >
@@ -623,7 +623,7 @@ function App() {
                                     if (currentModelType === 'online') setModel(null);
                                 }}
                                 className={cn(
-                                    "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium",
+                                    "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
                                     activeTab === 'offline'
                                         ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 shadow-lg shadow-cyan-500/10"
                                         : "text-slate-600 hover:text-slate-800 hover:bg-black/5 dark:text-white/70 dark:hover:text-white/90 dark:hover:bg-white/5"
@@ -640,7 +640,7 @@ function App() {
                                     if (currentModelType !== 'online') setModel(null);
                                 }}
                                 className={cn(
-                                    "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium",
+                                    "px-6 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500",
                                     activeTab === 'realtime'
                                         ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 shadow-lg shadow-cyan-500/10"
                                         : "text-slate-600 hover:text-slate-800 hover:bg-black/5 dark:text-white/70 dark:hover:text-white/90 dark:hover:bg-white/5"
@@ -844,7 +844,7 @@ function App() {
 
                                         <button
                                             onClick={() => setUseItn(!useItn)}
-                                            className={cn("glass-toggle", useItn && "active")}
+                                            className={cn("glass-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500", useItn && "active")}
                                             disabled={model === "Paraformer-Online"}
                                             title={model === "Paraformer-Online" ? "ITN not available in streaming mode" : "Toggle Inverse Text Normalization"}
                                             aria-label={model === "Paraformer-Online" ? "ITN not available in streaming mode" : "Toggle Inverse Text Normalization"}
@@ -875,7 +875,7 @@ function App() {
                                                     <motion.button
                                                         key="copy-btn"
                                                         onClick={copyToClipboard}
-                                                        className="copy-button"
+                                                        className="copy-button focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-lg"
                                                         title={copied ? t('app.copied') : t('app.copy')}
                                                         aria-label={copied ? t('app.copied') : t('app.copy')}
                                                         initial={{ opacity: 0, scale: 0.8 }}
@@ -961,7 +961,7 @@ function App() {
                                                     <>
                                                         <motion.button
                                                             onClick={saveBatchResults}
-                                                            className="copy-button flex items-center gap-1 text-xs mr-2"
+                                                            className="copy-button flex items-center gap-1 text-xs mr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-lg"
                                                             title={t('batch.save')}
                                                             aria-label={t('batch.save')}
                                                             whileHover={{ scale: 1.05 }}
@@ -972,7 +972,7 @@ function App() {
                                                         </motion.button>
                                                         <motion.button
                                                             onClick={copyAllBatchResults}
-                                                            className="copy-button flex items-center gap-1 text-xs"
+                                                            className="copy-button flex items-center gap-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-lg"
                                                             title={t('batch.copyAll')}
                                                             aria-label={t('batch.copyAll')}
                                                             whileHover={{ scale: 1.05 }}
@@ -986,7 +986,7 @@ function App() {
                                                 {!isBatchProcessing && (
                                                     <motion.button
                                                         onClick={clearBatchQueue}
-                                                        className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors"
+                                                        className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                                                         title={t('batch.clear')}
                                                         aria-label={t('batch.clear')}
                                                         whileHover={{ scale: 1.05 }}
@@ -1031,7 +1031,7 @@ function App() {
                                                     {/* Item Header */}
                                                     <button
                                                         onClick={() => toggleBatchItemExpand(item.id)}
-                                                        className="w-full px-4 py-3 flex items-center justify-between text-left"
+                                                        className="w-full px-4 py-3 flex items-center justify-between text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 rounded-lg"
                                                         disabled={item.status === 'pending'}
                                                         aria-expanded={expandedBatchItems.has(item.id)}
                                                     >
