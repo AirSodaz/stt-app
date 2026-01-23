@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, FolderOpen, FileText, Files } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { open } from '@tauri-apps/plugin-dialog';
 
@@ -14,6 +14,20 @@ export const SaveOptionsModal = ({ isOpen, onClose, onConfirm }: SaveOptionsModa
     const { t } = useTranslation();
     const [mode, setMode] = useState<'merge' | 'separate'>('merge');
     const [path, setPath] = useState<string>('');
+    const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            const previousFocus = document.activeElement as HTMLElement;
+            // Delay focus slightly to ensure modal is rendered
+            requestAnimationFrame(() => {
+                closeButtonRef.current?.focus();
+            });
+            return () => {
+                previousFocus?.focus();
+            };
+        }
+    }, [isOpen]);
 
     const handleBrowse = async () => {
         try {
@@ -53,6 +67,9 @@ export const SaveOptionsModal = ({ isOpen, onClose, onConfirm }: SaveOptionsModa
                     {/* Modal */}
                     <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
                         <motion.div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="save-modal-title"
                             className="w-full max-w-md bg-white dark:bg-[#0f1115] border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden pointer-events-auto"
                             initial={{ opacity: 0, scale: 0.95, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -60,9 +77,11 @@ export const SaveOptionsModal = ({ isOpen, onClose, onConfirm }: SaveOptionsModa
                         >
                             {/* Header */}
                             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/5">
-                                <h3 className="text-lg font-medium text-slate-900 dark:text-white">{t('saveModal.title')}</h3>
+                                <h3 id="save-modal-title" className="text-lg font-medium text-slate-900 dark:text-white">{t('saveModal.title')}</h3>
                                 <button
+                                    ref={closeButtonRef}
                                     onClick={onClose}
+                                    aria-label={t('saveModal.close')}
                                     className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/70 hover:text-slate-900 dark:hover:text-white transition-colors"
                                 >
                                     <X className="w-5 h-5" />
@@ -79,6 +98,7 @@ export const SaveOptionsModal = ({ isOpen, onClose, onConfirm }: SaveOptionsModa
                                     <div className="grid grid-cols-2 gap-3">
                                         <button
                                             onClick={() => setMode('merge')}
+                                            aria-pressed={mode === 'merge'}
                                             className={`p-4 rounded-xl border flex flex-col items-center gap-3 transition-colors ${mode === 'merge'
                                                 ? 'bg-cyan-500/10 border-cyan-500/50 text-cyan-600 dark:text-cyan-400'
                                                 : 'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-white/70 hover:bg-slate-100 dark:hover:bg-white/10 hover:border-slate-300 dark:hover:border-white/20'
@@ -89,6 +109,7 @@ export const SaveOptionsModal = ({ isOpen, onClose, onConfirm }: SaveOptionsModa
                                         </button>
                                         <button
                                             onClick={() => setMode('separate')}
+                                            aria-pressed={mode === 'separate'}
                                             className={`p-4 rounded-xl border flex flex-col items-center gap-3 transition-colors ${mode === 'separate'
                                                 ? 'bg-cyan-500/10 border-cyan-500/50 text-cyan-600 dark:text-cyan-400'
                                                 : 'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-white/70 hover:bg-slate-100 dark:hover:bg-white/10 hover:border-slate-300 dark:hover:border-white/20'

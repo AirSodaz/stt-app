@@ -81,6 +81,7 @@ const resources = {
                 "download": "Download"
             },
             "saveModal": {
+                "close": "Close",
                 "title": "Save Results",
                 "selectFolder": "Select Destination Folder",
                 "mode": "Save Mode",
@@ -174,6 +175,7 @@ const resources = {
                 "download": "下载"
             },
             "saveModal": {
+                "close": "关闭",
                 "title": "保存结果",
                 "selectFolder": "选择目标文件夹",
                 "mode": "保存模式",
