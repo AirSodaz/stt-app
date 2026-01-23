@@ -3,6 +3,7 @@ import { X, FolderOpen, FileText, Files } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { open } from '@tauri-apps/plugin-dialog';
+import { logger } from '../lib/logger';
 
 interface SaveOptionsModalProps {
     isOpen: boolean;
@@ -77,7 +78,7 @@ export const SaveOptionsModal = ({ isOpen, onClose, onConfirm }: SaveOptionsModa
                 setPath(selected);
             }
         } catch (error) {
-            console.error('Failed to open dialog:', error);
+            logger.error('Failed to open dialog:', error);
         }
     };
 
