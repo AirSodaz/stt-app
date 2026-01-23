@@ -30,6 +30,7 @@ export function AudioInput({
     const [isRecording, setIsRecording] = useState(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const startRecording = async () => {
         console.log('[AudioInput] startRecording called, isStreamingMode:', isStreamingMode);
@@ -85,6 +86,10 @@ export function AudioInput({
 
     // Determine if currently "active" (recording or streaming)
     const isActive = isStreamingMode ? isStreaming : isRecording;
+
+    const handleUploadClick = () => {
+        fileInputRef.current?.click();
+    };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -170,7 +175,7 @@ export function AudioInput({
                     aria-label={isActive ? t('audioInput.tapToStop') : t('audioInput.tapToSpeak')}
                     className={cn(
                         "relative flex items-center justify-center w-28 h-28 rounded-full transition-colors duration-300",
-                        "border-2 shadow-2xl",
+                        "border-2 shadow-2xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-cyan-500/50",
                         isActive
                             ? "bg-linear-to-br from-red-900/80 to-red-950/80 border-red-500/50"
                             : "bg-linear-to-br from-slate-900/80 to-slate-950/80 border-white/10 hover:border-cyan-500/50",
@@ -249,26 +254,30 @@ export function AudioInput({
             {/* Upload Button */}
             <AnimatePresence>
                 {!isActive && !isProcessing && showUpload && (
-                    <motion.label
-                        className="glass-upload cursor-pointer"
-                        aria-label={t('audioInput.upload')}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 10 }}
-                        transition={{ duration: 0.3, delay: 0.1 }}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                    >
-                        <Upload className="w-4 h-4" />
-                        <span>{t('audioInput.upload')}</span>
+                    <>
+                        <motion.button
+                            className="glass-upload cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                            aria-label={t('audioInput.upload')}
+                            onClick={handleUploadClick}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            transition={{ duration: 0.3, delay: 0.1 }}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                        >
+                            <Upload className="w-4 h-4" />
+                            <span>{t('audioInput.upload')}</span>
+                        </motion.button>
                         <input
+                            ref={fileInputRef}
                             type="file"
                             accept="audio/*"
                             multiple
                             className="hidden"
                             onChange={handleFileUpload}
                         />
-                    </motion.label>
+                    </>
                 )}
             </AnimatePresence>
         </div >
