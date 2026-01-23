@@ -579,7 +579,7 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
     # Streaming chunk size is typically 600ms (10 * 60ms)
     # We set a slightly larger buffer to ensure we have enough data
     SEGMENT_DURATION = 1.2 
-    SEGMENT_SAMPLES = int(SAMPLE_RATE * SEGMENT_DURATION * 2)  # *2 for int16 bytes
+    SEGMENT_BYTES = int(SAMPLE_RATE * SEGMENT_DURATION * 2)  # *2 for int16 bytes
     
     # helper to process result
     def process_result(res):
@@ -630,13 +630,21 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
             audio_buffer.extend(data)
             
             # Process chunks
-            while len(audio_buffer) >= SEGMENT_SAMPLES:
+            while len(audio_buffer) >= SEGMENT_BYTES:
                 # Extract chunk
-                segment_bytes = bytes(audio_buffer[:SEGMENT_SAMPLES])
-                audio_buffer = audio_buffer[SEGMENT_SAMPLES:]
+                num_samples = SEGMENT_BYTES // 2
                 
-                audio_data = np.frombuffer(segment_bytes, dtype=np.int16)
-                audio_data = audio_data.astype(np.float32) / 32768.0
+                # Zero-copy view of the data
+                audio_view = np.frombuffer(audio_buffer, count=num_samples, dtype=np.int16)
+
+                # Convert to float (creates new array and copy)
+                audio_data = audio_view.astype(np.float32) / 32768.0
+
+                # Release the view so we can resize the buffer
+                del audio_view
+
+                # In-place remove processed bytes
+                del audio_buffer[:SEGMENT_BYTES]
                 
                 try:
                     res = await asyncio.to_thread(
