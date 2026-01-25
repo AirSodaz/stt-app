@@ -536,8 +536,6 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
     await websocket.accept()
     logger.info("WS accepted")
     
-    import numpy as np
-    
     # Determine which streaming model to use
     streaming_model = None
     # Determine which streaming model to use
@@ -593,14 +591,13 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
                 # EOF signal
                 logger.info(f"[WS] EOF received, processing remaining {len(audio_buffer)} bytes...")
                 if len(audio_buffer) > 0:
-                   audio_data = np.frombuffer(bytes(audio_buffer), dtype=np.int16)
-                   audio_data = audio_data.astype(np.float32) / 32768.0
+                   chunk_bytes = bytes(audio_buffer)
                    
                    try:
                        # Final chunk
                        res = await asyncio.to_thread(
                            asr_client.inference_chunk,
-                           audio_data, 
+                           chunk_bytes,
                            cache=cache,
                            is_final=True,
                            model_name=streaming_model
@@ -622,17 +619,9 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
             
             # Process chunks
             while len(audio_buffer) >= SEGMENT_BYTES:
-                # Extract chunk
-                num_samples = SEGMENT_BYTES // 2
-                
-                # Zero-copy view of the data
-                audio_view = np.frombuffer(audio_buffer, count=num_samples, dtype=np.int16)
-
-                # Convert to float (creates new array and copy)
-                audio_data = audio_view.astype(np.float32) / 32768.0
-
-                # Release the view so we can resize the buffer
-                del audio_view
+                # Extract chunk as raw bytes
+                # We pass bytes to the worker thread to offload the float conversion/normalization
+                chunk_bytes = bytes(audio_buffer[:SEGMENT_BYTES])
 
                 # In-place remove processed bytes
                 del audio_buffer[:SEGMENT_BYTES]
@@ -640,7 +629,7 @@ async def websocket_transcribe(websocket: WebSocket, model: str = None):
                 try:
                     res = await asyncio.to_thread(
                         asr_client.inference_chunk,
-                        audio_data,
+                        chunk_bytes,
                         cache=cache,
                         is_final=False,
                         model_name=streaming_model
